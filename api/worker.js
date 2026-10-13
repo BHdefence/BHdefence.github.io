@@ -6,7 +6,7 @@ const ID_RE = /^[a-z][a-z0-9_]{3,15}$/;
 const PW_RE = /^[\x21-\x7e]{8,64}$/;
 const CODE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/;
 const WEEK_RE = /^\d{4}-W\d{2}$/;
-const DIFF_IDS = ['easy', 'normal', 'hard', 'nm1', 'nm2', 'nm3', 'nether']; // same ids as DIFFS in data.js
+const DIFF_IDS = ['easy', 'normal', 'hard', 'nm1', 'nm2', 'nm3', 'nether', 'nether2', 'nether3']; // same ids as DIFFS in data.js
 const NOTE_MAX = 500;
 const ITER = 100000, SESSION_DAYS = 180, RESET_TRIES = 5, LOCK_MS = 30 * 60e3, SAVE_MAX = 32 * 1024;
 

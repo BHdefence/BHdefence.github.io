@@ -43,6 +43,8 @@ const perkL = id => P.perks[id] || 0;
 let noPerks = false;
 const perkRun = id => (noPerks ? 0 : perkL(id));
 const unlocked = d => !d.req || (P.wins[d.req] || 0) > 0;
+// '악몽 II가 열렸습니다', '저승길 I이 열렸습니다': roman numerals read 일·이·삼
+const opensMsg = name => `${name}${/II$/.test(name) && !/III$/.test(name) ? '가' : '이'} 열렸습니다`;
 
 // Weekly ranking runs share one seed per ISO week (Korean time), so everyone sees the same shops and waves.
 function kstNow() { return new Date(Date.now() + 9 * 3600e3); }
@@ -520,9 +522,11 @@ function kill(e, w) {
   if (e.boss) { R.shake = 8; hitStop = e.d.final ? 0.7 : 0.35; R.fx.push({ k: 'boom', x: e.x, y: e.y - 10, r: 46, t: 0, life: 0.6, c: '#f3c94a' }); R.fx.push({ k: 'ring', x: e.x, y: e.y - 10, r: 90, t: 0, life: 0.8, c: '#fff2a8', big: true }); if (!e.d.final) banner('보스 토벌', e.d.name, 'gold', '토벌'); }
   if (R.diff.revive && !e.ghost && !e.boss && !e.d.treasure && Math.random() < R.diff.revive) {
     // 저승길: the fallen rise once more as a pale 원혼 with part of their health and no bounty
-    const o = spawnFoe(e.kind, 0, 0, { x: e.x, y: e.y });
-    Object.assign(o, { ghost: true, hp: o.max * 0.4, bounty: 0, spd: o.spd * 1.15, face: e.face, flash: 0.15 });
-    R.fx.push({ k: 'ring', x: e.x, y: e.y - 6, r: 14, t: 0, life: 0.5, c: '#9ff0e6' });
+    // it rises a few steps further out and strikes at half strength, so it is a second wave, not a hit at the gate
+    const d = Math.max(1, distC(e)), back = 18, at = { x: e.x + (e.x - CX) / d * back, y: e.y + (e.y - CY) / d * back };
+    const o = spawnFoe(e.kind, 0, 0, at);
+    Object.assign(o, { ghost: true, hp: o.max * (R.diff.ghost || 0.4), bounty: 0, dmg: o.dmg * 0.5, face: e.face, flash: 0.15 });
+    R.fx.push({ k: 'ring', x: at.x, y: at.y - 6, r: 14, t: 0, life: 0.5, c: '#9ff0e6' });
   }
   Sfx.play('coin', 80);
   if (e.d.final) win();
@@ -1184,7 +1188,7 @@ function showResult(res) {
   const won = R.state === 'won', d = R.diff, cleared = roundsCleared(), canOnline = R.ranked && Cloud.online && !Cloud.api, autoOnline = R.ranked && Cloud.api && !!Cloud.acct && !!res.rec;
   openModal(`<div class="eyebrow ${won ? 'gold' : 'bad'}">${d.name}${R.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}</div><h2>${won ? '봉화를 끝까지 지켰습니다' : R.round === 0 ? '출정 전에 물러났습니다' : `${R.round} 라운드에서 봉화가 꺼졌습니다`}</h2>
     <dl class="facts"><dt>버틴 라운드</dt><dd>${cleared} / ${ROUNDS}${won ? ' + 흑룡' : ''}</dd><dt>처치</dt><dd>${fmt(R.kills)}</dd><dt>시간</dt><dd>${Math.floor(R.time / 60)}분 ${Math.floor(R.time % 60)}초</dd><dt>기억 조각</dt><dd class="gold">+${res.shards}</dd>${res.rec ? `<dt>랭킹 점수</dt><dd class="gold big">${fmt(res.rec.score)}</dd>` : ''}</dl>
-    ${won && d.id === 'hard' && P.wins.hard === 1 ? '<p class="gold">악몽 I이 열렸습니다</p>' : ''}${won && d.id === 'nm1' && P.wins.nm1 === 1 ? '<p class="gold">악몽 II가 열렸습니다</p>' : ''}${won && d.id === 'nm2' && P.wins.nm2 === 1 ? '<p class="gold">악몽 III이 열렸습니다</p>' : ''}${won && d.id === 'nm3' && P.wins.nm3 === 1 ? '<p class="gold">저승길이 열렸습니다</p>' : ''}
+    ${won && P.wins[d.id] === 1 && DIFFS.find(x => x.req === d.id) ? `<p class="gold">${opensMsg(DIFFS.find(x => x.req === d.id).name)}</p>` : ''}
     ${canOnline ? `<div class="submit"><input id="nickIn" maxlength="12" placeholder="닉네임" aria-label="닉네임" autocomplete="off"><button class="btn primary" data-act="submit">온라인 랭킹 등록</button></div><p class="dim small" id="submitNote">이 기기 기록에는 자동으로 남겼습니다. 온라인에는 한 사람당 이번 주 최고 기록 하나가 올라갑니다.</p>` : autoOnline ? `<p class="small" id="submitNote">명예의 전당에 <b>${Cloud.acct.id}</b>(으)로 올리는 중입니다…</p>` : R.ranked ? `<p class="dim small">이 기기 랭킹에 기록했습니다.${Cloud.api ? ' 로그인하면 명예의 전당에 올라갑니다.' : ''}</p>` : ''}
     ${R.round > 0 ? '<button class="btn share-btn" data-act="share">기록 공유 · 자랑하기</button>' : ''}
     <div class="actions"><button class="btn" data-act="menu">메뉴로</button>${R.ranked ? '<button class="btn" data-act="hall">명예의 전당</button>' : '<button class="btn" data-act="perks">수호 기억</button>'}${R.ranked ? (triesLeft() > 0 ? '<button class="btn primary" data-act="rankStart" data-focus>다시 도전</button>' : '') : `<button class="btn primary" data-act="again" data-focus>다시 하기</button>`}</div>`, won ? 'win' : 'lose');

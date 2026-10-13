@@ -200,8 +200,10 @@ const DIFFS = [
   { id: 'hard',  name: '어려움',  hp: 1.35, count: 1.1, boss: 1.4, edmg: 1.15, income: 1.0, mem: 1.5, theme: 'autumn', note: ['적 체력과 수가 늘어납니다', '이기면 악몽 I이 열립니다'] },
   { id: 'nm1',   name: '악몽 I',   hp: 1.8, count: 1.2, boss: 2.0, edmg: 1.3, income: 1.0, mem: 2.0, theme: 'night',  note: ['어둠이 깔린 전장', '보스가 훨씬 단단합니다'], req: 'hard' },
   { id: 'nm2',   name: '악몽 II',  hp: 2.4, count: 1.3, boss: 2.8, edmg: 1.45, income: 1.0, mem: 2.5, theme: 'night',  note: ['적이 더 많이 몰려옵니다'], req: 'nm1' },
-  { id: 'nm3',   name: '악몽 III', hp: 3.2, count: 1.4, boss: 3.8, edmg: 1.6, income: 1.0, mem: 3.0, theme: 'night',  note: ['가장 깊은 악몽', '이기면 저승길이 열립니다'], req: 'nm2' },
-  { id: 'nether', name: '저승길',  hp: 4.0, count: 1.45, boss: 4.8, edmg: 1.75, income: 1.0, mem: 3.5, theme: 'nether', revive: 0.2, note: ['꽃무릇이 핀 저승 들판', '쓰러진 적 다섯에 하나는 원혼으로 다시 일어납니다'], req: 'nm3' },
+  { id: 'nm3',   name: '악몽 III', hp: 3.2, count: 1.4, boss: 3.8, edmg: 1.6, income: 1.0, mem: 3.0, theme: 'night',  note: ['가장 깊은 악몽', '이기면 저승길 I이 열립니다'], req: 'nm2' },
+  { id: 'nether',  name: '저승길 I',   hp: 3.3, count: 1.4,  boss: 3.9, edmg: 1.6,  income: 1.0, mem: 3.5, theme: 'nether', revive: 0.15, ghost: 0.35, note: ['꽃무릇이 핀 저승 들판', '쓰러진 적의 15%가 원혼으로 다시 일어납니다 (체력 35%)'], req: 'nm3' },
+  { id: 'nether2', name: '저승길 II',  hp: 3.6, count: 1.45, boss: 4.3, edmg: 1.65, income: 1.0, mem: 4.0, theme: 'nether', revive: 0.2,  ghost: 0.4,  note: ['원혼이 더 자주 일어납니다', '쓰러진 적의 20%가 원혼으로 (체력 40%)'], req: 'nether' },
+  { id: 'nether3', name: '저승길 III', hp: 4.0, count: 1.5,  boss: 4.8, edmg: 1.75, income: 1.0, mem: 4.5, theme: 'nether', revive: 0.25, ghost: 0.5,  note: ['저승의 가장 깊은 곳', '쓰러진 적의 25%가 원혼으로 (체력 50%)'], req: 'nether2' },
 ];
 const DIFF = Object.fromEntries(DIFFS.map(d => [d.id, d]));
 
@@ -231,10 +233,10 @@ const giftTier = r => Math.min(3, 1 + Math.floor(r / 15));
 
 // 봉수 소식: newest first. A new `id` lights the NEW mark on the title screen until the player opens it.
 const NEWS = [
-  { id: '2026-10-14b', date: '10월 14일', title: '새 난이도 저승길', items: [
-    '악몽 III을 이기면 열리는 일곱 번째 난이도입니다. 꽃무릇이 핀 저승 들판에서 싸웁니다.',
-    '쓰러진 적 다섯에 하나는 원혼으로 한 번 더 일어납니다. 원혼은 체력이 40%이고 조금 빠르며 엽전을 주지 않습니다.',
-    '적 체력 ×4, 수 ×1.45, 보스 체력 ×4.8. 버틴 라운드마다 기억 조각 3.5개를 받습니다.',
+  { id: '2026-10-14c', date: '10월 14일', title: '새 난이도 저승길 I · II · III', items: [
+    '악몽 III을 이기면 저승길 I이 열리고, 하나씩 이길 때마다 다음 단계가 열립니다. 꽃무릇이 핀 저승 들판에서 싸웁니다.',
+    '쓰러진 적의 일부가 몇 걸음 뒤에서 원혼으로 한 번 더 일어납니다. 원혼은 절반 세기로 때리고 엽전을 주지 않습니다.',
+    '저승길 I: 원혼 15%(체력 35%) · II: 20%(40%) · III: 25%(50%). 버틴 라운드마다 기억 조각 3.5 · 4 · 4.5개.',
   ] },
   { id: '2026-10-14', date: '10월 14일', title: '첫 봉화 완주 · 봉수 소식 · 장작 보태기', items: [
     '난이도마다 흑룡을 처음 쓰러뜨린 수호자의 이름이 타이틀 화면에 걸립니다. (로그인해야 이름이 남습니다)',
