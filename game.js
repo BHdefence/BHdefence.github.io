@@ -118,10 +118,11 @@ const Music = {
     const c = Sfx.ctx; if (!c || c.state !== 'running') return;
     const out = this.node(c), target = this.want && this.vol() ? this.vol() * MOODS[this.want].vol * (paused ? 0.45 : 1) : 0;
     if (this.want !== this.mood) {
-      // fade out, switch, fade back in
-      out.gain.cancelScheduledValues(c.currentTime); out.gain.setTargetAtTime(0, c.currentTime, 0.25);
-      if (out.gain.value < 0.02 || !this.mood) { this.mood = this.want; this.next = c.currentTime + 0.1; this.step = 0; this.hold = 0; }
-      return;
+      // fade out once, then switch when the fade has had time to finish (never by reading the gain back)
+      if (this.fade === null) { this.fade = this.mood ? c.currentTime + 0.7 : c.currentTime; out.gain.cancelScheduledValues(c.currentTime); out.gain.setTargetAtTime(0, c.currentTime, 0.15); }
+      if (c.currentTime < this.fade) return;
+      this.mood = this.want; this.fade = null; this.next = c.currentTime + 0.1; this.step = 0; this.hold = 0;
+      if (!this.mood) return;
     }
     if (!this.mood) return;
     out.gain.setTargetAtTime(target, c.currentTime, 0.4);
