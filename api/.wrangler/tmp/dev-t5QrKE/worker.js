@@ -52,7 +52,7 @@ async function visitCounts(env, today) {
 }
 __name(visitCounts, "visitCounts");
 function weekId(now = Date.now()) {
-  const d = new Date(now + 9 * 36e5), day = (d.getUTCDay() + 6) % 7, th = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day + 3));
+  const d = new Date(now + 11 * 36e5), day = (d.getUTCDay() + 6) % 7, th = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day + 3));
   const jan4 = new Date(Date.UTC(th.getUTCFullYear(), 0, 4)), wk = 1 + Math.round(((th - jan4) / 864e5 - 3 + (jan4.getUTCDay() + 6) % 7) / 7);
   return `${th.getUTCFullYear()}-W${String(wk).padStart(2, "0")}`;
 }

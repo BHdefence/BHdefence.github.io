@@ -49,12 +49,21 @@ const opensMsg = name => `${name}${/II$/.test(name) && !/III$/.test(name) ? '가
 
 // Weekly ranking runs share one seed per ISO week (Korean time), so everyone sees the same shops and waves.
 function kstNow() { return new Date(Date.now() + 9 * 3600e3); }
+// The ranked week turns over every Sunday at 22:00 Korean time: shift the clock 2 hours ahead so that moment
+// becomes Monday 00:00, then take the ISO week. Must match weekId() in api/worker.js.
+const WEEK_SHIFT = 2 * 3600e3;
 function weekId() {
-  const d = kstNow(), day = (d.getUTCDay() + 6) % 7, th = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day + 3));
+  const d = new Date(kstNow().getTime() + WEEK_SHIFT), day = (d.getUTCDay() + 6) % 7, th = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day + 3));
   const jan4 = new Date(Date.UTC(th.getUTCFullYear(), 0, 4)), wk = 1 + Math.round(((th - jan4) / 864e5 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
   return `${th.getUTCFullYear()}-W${String(wk).padStart(2, '0')}`;
 }
 const dayId = () => kstNow().toISOString().slice(0, 10);
+// Time left until the next Sunday 22:00 KST, as '2일 5시간' / '3시간 12분'.
+function resetLeft() {
+  const d = new Date(kstNow().getTime() + WEEK_SHIFT), sinceMon = ((d.getUTCDay() + 6) % 7) * 864e5 + (d.getTime() % 864e5), left = 7 * 864e5 - sinceMon;
+  const dd = Math.floor(left / 864e5), hh = Math.floor(left % 864e5 / 3600e3), mm = Math.floor(left % 3600e3 / 60e3);
+  return dd ? `${dd}일 ${hh}시간` : hh ? `${hh}시간 ${mm}분` : `${mm}분`;
+}
 const RANK_TRIES = 3;
 function triesLeft() { return P.ranked.day === dayId() ? Math.max(0, RANK_TRIES - P.ranked.used) : RANK_TRIES; }
 
@@ -1416,7 +1425,7 @@ function showMenu(view = 'title') {
     m.innerHTML = `<div class="tl-row">${Cloud.api ? `<button class="acct-btn${Cloud.acct ? ' in' : ''}" data-act="acct">${Cloud.acct ? `${Cloud.acct.id} ✓` : '게스트 · 로그인'}</button>` : ''}<button class="acct-btn" data-act="news">봉수 소식${newsUnseen() ? '<span class="new">NEW</span>' : ''}</button>${donateLinks().length ? '<button class="acct-btn fire" data-act="donate">장작 보태기 · 서버비</button>' : ''}</div><div class="first-band" id="firstBand" data-act="firsts" role="button" tabindex="0" ${Cloud.firsts ? '' : 'hidden'}>${firstHtml()}</div><div class="title-wrap"><div class="logo"><h1>봉화대 사수</h1><span class="seal-big">봉수</span><span class="logo-sub">다섯 홰의 불이 꺼지기 전에</span></div>
       <nav class="mnav">
         <button class="mbtn main" data-act="go-select" data-focus>출정하기</button>
-        <button class="mbtn" data-act="go-rank">주간 랭킹전 <span class="badge">${triesLeft()}/${RANK_TRIES}</span></button>
+        <button class="mbtn rank-btn" data-act="go-rank"><span>주간 랭킹전 <span class="badge">${triesLeft()}/${RANK_TRIES}</span></span><small>매주 일요일 22시 갱신</small></button>
         <button class="mbtn" data-act="perks">수호 기억 <span class="badge gold">${fmt(P.shards)}</span></button>
         <button class="mbtn" data-act="codex">도감 <span class="badge">${ITEMS.length}</span></button>
         <button class="mbtn" data-act="hall">명예의 전당</button>
@@ -1470,7 +1479,7 @@ function renderRankMenu() {
   const wk = weekId(), left = triesLeft(), mine = P.records.filter(r => r.week === wk)[0];
   $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('주간 랭킹전')}<div class="rank-grid"><div class="rank-info">
     <div class="eyebrow gold">${wk} 주차</div><h3>모두가 같은 상점과 같은 적 순서로 겨룹니다</h3>
-    <ul class="rules"><li>난이도는 <b>보통</b>으로 고정됩니다</li><li>한 주 동안 상점 물건과 적이 나오는 순서가 모두에게 같습니다</li><li>하루 ${RANK_TRIES}번 도전할 수 있습니다 (한국 시간 자정에 다시 채워짐)</li><li>점수 = 버틴 라운드 × 1,000. 승리하면 +30,000과 남은 체력 보너스(최대 5,000)</li><li>같은 라운드끼리는 그 라운드를 더 오래 버틴 사람이, 승리끼리는 흑룡을 더 빨리 잡은 사람이 위입니다(최대 999점)</li><li><b>수호 기억은 적용되지 않습니다.</b> 모두 같은 출발선에서 겨룹니다</li></ul>
+    <ul class="rules"><li>난이도는 <b>보통</b>으로 고정됩니다</li><li><b>매주 일요일 22시(한국 시간)</b>에 새 주가 시작되고 순위가 새로 쌓입니다 · 다음 갱신까지 <b>${resetLeft()}</b></li><li>한 주 동안 상점 물건과 적이 나오는 순서가 모두에게 같습니다</li><li>하루 ${RANK_TRIES}번 도전할 수 있습니다 (한국 시간 자정에 다시 채워짐)</li><li>점수 = 버틴 라운드 × 1,000. 승리하면 +30,000과 남은 체력 보너스(최대 5,000)</li><li>같은 라운드끼리는 그 라운드를 더 오래 버틴 사람이, 승리끼리는 흑룡을 더 빨리 잡은 사람이 위입니다(최대 999점)</li><li><b>수호 기억은 적용되지 않습니다.</b> 모두 같은 출발선에서 겨룹니다</li></ul>
     <p>오늘 남은 도전 <b class="gold">${left} / ${RANK_TRIES}</b>${mine ? ` · 이번 주 내 최고 <b class="gold">${fmt(mine.score)}</b>점` : ''}</p>
     ${Cloud.api ? (Cloud.acct ? `<p class="field-row">참가 아이디 <b class="gold">${Cloud.acct.id}</b></p>` : '<p class="field-row">주간 랭킹전은 로그인해야 참가할 수 있습니다. 명예의 전당에는 아이디가 올라갑니다.</p>') : '<label class="field-row">닉네임 <input id="nickMenu" maxlength="12" placeholder="랭킹에 표시할 이름" autocomplete="off"></label>'}
     ${Cloud.api && !Cloud.acct ? '<button class="btn primary big" data-act="acct" data-id="login" data-focus>로그인 · 회원가입</button>' : `<button class="btn primary big" data-act="rankStart" ${left ? '' : 'disabled'} data-focus>${left ? '▶ 랭킹전 출전' : '오늘 도전을 모두 썼습니다'}</button>`}</div>

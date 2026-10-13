@@ -41,9 +41,9 @@ async function visitCounts(env, today) {
   const r = await env.DB.prepare('SELECT COALESCE(SUM(n), 0) AS total, COALESCE(MAX(CASE WHEN day = ? THEN n END), 0) AS today FROM visits').bind(today).first();
   return { total: r ? r.total : 0, today: r ? r.today : 0 };
 }
-// Same week id as the game: ISO week in Korean time.
+// Same week id as the game: ISO week in Korean time, turning over every Sunday 22:00 (clock shifted 2 hours ahead).
 function weekId(now = Date.now()) {
-  const d = new Date(now + 9 * 3600e3), day = (d.getUTCDay() + 6) % 7, th = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day + 3));
+  const d = new Date(now + 11 * 3600e3), day = (d.getUTCDay() + 6) % 7, th = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day + 3));
   const jan4 = new Date(Date.UTC(th.getUTCFullYear(), 0, 4)), wk = 1 + Math.round(((th - jan4) / 864e5 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
   return `${th.getUTCFullYear()}-W${String(wk).padStart(2, '0')}`;
 }
