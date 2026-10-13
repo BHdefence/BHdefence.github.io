@@ -1286,7 +1286,7 @@ function renderSettings() {
 }
 function startRun(diffId, ranked) {
   if (ranked) { if (triesLeft() <= 0) return; if (P.ranked.day !== dayId()) P.ranked = { day: dayId(), used: 0 }; P.ranked.used++; persist(); }
-  newRun(diffId, ranked); mode = 'run'; paused = false; speed = 1; fpanel = null; invFilter = 'all'; selected = null; hideTip();
+  closeModal(); newRun(diffId, ranked); mode = 'run'; paused = false; speed = 1; fpanel = null; invFilter = 'all'; selected = null; hideTip();
   $('#menu').hidden = true; $('#fpanel').hidden = true; for (const b of $$('[data-act="fp"]')) b.classList.remove('on');
   renderShop(); renderInv(); renderHud(true); Sfx.ensure();
   banner(R.ranked ? `주간 랭킹전 ${weekId()}` : R.diff.name, `${PREP_TIME}초 뒤 첫 라운드 · 장터에서 무기를 사세요`);
