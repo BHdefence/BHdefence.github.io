@@ -130,7 +130,7 @@ const Music = {
       if (!this.mood) return;
     }
     if (!this.mood) return;
-    out.gain.setTargetAtTime(target, c.currentTime, 0.4);
+    out.gain.setTargetAtTime(target, c.currentTime, P.music === false ? 0.05 : 0.4); // off is near-instant, volume changes glide
     const M = MOODS[this.mood], dt = 60 / M.bpm / 3; // three pulses per beat
     while (this.next < c.currentTime + 0.3) { this.play(c, out, M, this.next, dt); this.next += dt; this.step++; }
   },
@@ -185,6 +185,12 @@ const Music = {
     s.connect(fl).connect(g).connect(out); s.start(t, Math.random() * 0.5, d + 0.05);
   },
 };
+function toggleMusic() {
+  P.music = P.music === false; persist(); Sfx.ensure();
+  // silence at once rather than letting the slow volume glide finish
+  const c = Sfx.ctx; if (!P.music && c && Music.out) { Music.out.gain.cancelScheduledValues(c.currentTime); Music.out.gain.setTargetAtTime(0, c.currentTime, 0.05); }
+  toast(P.music ? '배경음악 켬' : '배경음악 끔');
+}
 function musicMood() {
   if (mode !== 'run' || !R) return 'title';
   if (R.state !== 'run') return null;
@@ -1559,7 +1565,7 @@ document.addEventListener('click', ev => {
     case 'perk': buyPerk(id); break;
     case 'hallView': hallView = id; if (menuView === 'rank') renderRankMenu(); else renderHall(); break;
     case 'sound': P.sound = !P.sound; persist(); renderSettings(); break;
-    case 'music': P.music = P.music === false; persist(); Sfx.ensure(); renderSettings(); break;
+    case 'music': toggleMusic(); renderSettings(); break;
     case 'reset': if (Date.now() - resetArmed > 4000) { resetArmed = Date.now(); el.textContent = '한 번 더 누르면 모두 지워집니다'; } else { resetArmed = 0; const keep = { sound: P.sound, nick: P.nick }; P = Object.assign(newProfile(), keep); persist(); toast('모든 진행을 지웠습니다'); renderSettings(); } break;
     case 'rotate-skip': rotateChoice = 'port'; fit(); break;
     case 'rotate-go': goLandscape(); break;
@@ -1568,6 +1574,8 @@ document.addEventListener('click', ev => {
 window.addEventListener('keydown', ev => {
   if (ev.target.closest && ev.target.closest('input, textarea')) return;
   const k = ev.code;
+  // M toggles music anywhere: menus, pause, open windows, result screen
+  if (k === 'KeyM' && !ev.ctrlKey && !ev.metaKey && !ev.altKey) { toggleMusic(); if (mode === 'menu' && menuView === 'settings') renderSettings(); return; }
   if (mode === 'menu') {
     if (k === 'Escape' && !$('#modal').hidden) { closeModal(); ev.preventDefault(); return; }
     if (k === 'Escape' && menuView !== 'title') { showMenu('title'); ev.preventDefault(); }
@@ -1589,7 +1597,6 @@ window.addEventListener('keydown', ev => {
   else if (k === 'KeyD') toggleFPanel('meter');
   else if (k === 'KeyH') toggleFPanel('match');
   else if (k === 'KeyG') { R.showRange = !R.showRange; $('#bRange').classList.toggle('on', R.showRange); }
-  else if (k === 'KeyM') { P.music = P.music === false; persist(); Sfx.ensure(); toast(P.music ? '배경음악 켬' : '배경음악 끔'); }
   else if (k === 'Tab') { speed = speed % 3 + 1; renderHud(true); ev.preventDefault(); }
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'run' && R && R.state === 'run' && !paused && !R.gift && P.tutorial) setPaused(true); });
