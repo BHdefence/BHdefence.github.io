@@ -661,7 +661,7 @@ function finishRun() {
   const shards = Math.floor(cleared * d.mem) + (won ? Math.round(25 * d.mem) : 0);
   P.shards += shards; P.runs++;
   P.best[d.id] = Math.max(P.best[d.id] || 0, won ? ROUNDS + 1 : R.round);
-  if (won) P.wins[d.id] = (P.wins[d.id] || 0) + 1;
+  if (won) { P.wins[d.id] = (P.wins[d.id] || 0) + 1; Cloud.claimFirst(d.id); }
   let rec = null;
   if (R.ranked) {
     rec = { week: weekId(), score: runScore(), round: won ? ROUNDS + 1 : R.round, win: won, kills: R.kills, nick: P.nick || '', at: Date.now() };
@@ -1372,7 +1372,7 @@ function showMenu(view = 'title') {
   const m = $('#menuBody');
   if (view === 'title') {
     const wins = DIFFS.filter(d => P.wins[d.id]).map(d => d.name);
-    m.innerHTML = `${Cloud.api ? `<button class="acct-btn${Cloud.acct ? ' in' : ''}" data-act="acct">${Cloud.acct ? `${Cloud.acct.id} ✓` : '게스트 · 로그인'}</button>` : ''}<div class="title-wrap"><div class="logo"><h1>봉화대 사수</h1><span class="seal-big">봉수</span><span class="logo-sub">다섯 홰의 불이 꺼지기 전에</span></div>
+    m.innerHTML = `<div class="tl-row">${Cloud.api ? `<button class="acct-btn${Cloud.acct ? ' in' : ''}" data-act="acct">${Cloud.acct ? `${Cloud.acct.id} ✓` : '게스트 · 로그인'}</button>` : ''}<button class="acct-btn" data-act="news">봉수 소식${newsUnseen() ? '<span class="new">NEW</span>' : ''}</button>${donateLinks().length ? '<button class="acct-btn fire" data-act="donate">장작 보태기 · 서버비</button>' : ''}</div><div class="first-band" id="firstBand" data-act="firsts" role="button" tabindex="0" ${Cloud.firsts ? '' : 'hidden'}>${firstHtml()}</div><div class="title-wrap"><div class="logo"><h1>봉화대 사수</h1><span class="seal-big">봉수</span><span class="logo-sub">다섯 홰의 불이 꺼지기 전에</span></div>
       <nav class="mnav">
         <button class="mbtn main" data-act="go-select" data-focus>출정하기</button>
         <button class="mbtn" data-act="go-rank">주간 랭킹전 <span class="badge">${triesLeft()}/${RANK_TRIES}</span></button>
@@ -1527,6 +1527,11 @@ document.addEventListener('click', ev => {
     case 'perks': showMenu('perks'); break;
     case 'hall': showMenu('hall'); break;
     case 'codex': showMenu('codex'); break;
+    case 'close': closeModal(); break;
+    case 'news': showNews(); break;
+    case 'note-send': sendNote(el); break;
+    case 'donate': showDonate(); break;
+    case 'firsts': showFirsts(); break;
     case 'cx-tab': codexTab = id; renderCodex(); break;
     case 'cx-filter': codexFilter = id; renderCodex(); break;
     case 'settings': showMenu('settings'); break;
@@ -1547,9 +1552,10 @@ document.addEventListener('click', ev => {
   }
 });
 window.addEventListener('keydown', ev => {
-  if (ev.target.closest && ev.target.closest('input')) return;
+  if (ev.target.closest && ev.target.closest('input, textarea')) return;
   const k = ev.code;
   if (mode === 'menu') {
+    if (k === 'Escape' && !$('#modal').hidden) { closeModal(); ev.preventDefault(); return; }
     if (k === 'Escape' && menuView !== 'title') { showMenu('title'); ev.preventDefault(); }
     else if (k === 'Enter' && menuView === 'select') { if (unlocked(DIFF[selDiff])) startRun(selDiff, false); ev.preventDefault(); }
     else if ((k === 'ArrowUp' || k === 'ArrowDown') && menuView === 'select') { const ok = DIFFS.filter(unlocked), i = ok.findIndex(d => d.id === selDiff); selDiff = ok[(i + (k === 'ArrowUp' ? -1 : 1) + ok.length) % ok.length].id; renderSelect(); ev.preventDefault(); }
@@ -1591,7 +1597,7 @@ const Cloud = {
     if (window.claude && typeof window.claude.use === 'function') return this.initArtifact();
     this.mode = 'api';
     try { const a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); if (a && a.id && a.token) { this.acct = a; this.uid = a.id; } } catch (e) { /* storage unavailable */ }
-    this.countVisit();
+    this.countVisit(); this.loadFirsts();
     if (this.acct) { const me = await this.call('GET', '/me'); if (me.ok) await this.pullSave(); }
     if (mode === 'menu') showMenu(menuView);
   },
@@ -1628,6 +1634,7 @@ const Cloud = {
     this.setAcct({ id: res.id, token: res.token });
     if (!P.nick) P.nick = res.id;
     await this.pullSave();
+    if (this.firsts) for (const d of DIFFS) if (P.wins[d.id] && !this.firsts[d.id]) await this.claimFirst(d.id, true);
   },
   async pullSave() {
     const s = await this.call('GET', '/save');
@@ -1644,6 +1651,20 @@ const Cloud = {
     if (fresh) try { localStorage.setItem('bonghwa-visit', dayId()); } catch (e) { /* storage unavailable */ }
     this.visits = { total: r.total, today: r.today };
     const el = $('#visits'); if (el) el.innerHTML = visitHtml();
+  },
+  // 첫 봉화 완주: diff id → { id, at }
+  firsts: null,
+  async loadFirsts() {
+    const r = await this.call('GET', '/firsts'); if (!r.ok) return;
+    this.firsts = Object.fromEntries((r.rows || []).map(x => [x.diff, { id: x.id, at: x.at }]));
+    const el = $('#firstBand'); if (el) { el.innerHTML = firstHtml(); el.hidden = false; }
+  },
+  async claimFirst(diff, quiet = false) {
+    if (!this.api || (this.firsts && this.firsts[diff])) return;
+    if (!this.acct) { if (this.firsts && !quiet) setTimeout(() => toast(`아직 ${DIFF[diff].name} 첫 완주자가 없습니다! 로그인하고 이기면 이름이 걸립니다`), 1800); return; }
+    const r = await this.call('POST', '/first', { diff }); if (!r.ok) return;
+    if (this.firsts && r.holder) this.firsts[diff] = r.holder;
+    if (r.first) setTimeout(() => toast(`${DIFF[diff].name} 첫 봉화 완주! 타이틀 화면에 이름이 걸립니다`), quiet ? 0 : 1800);
   },
   async logout() { if (this.api && this.acct) this.call('POST', '/logout'); this.setAcct(null); },
   // ── shared ──
@@ -1683,6 +1704,42 @@ const Cloud = {
   },
 };
 const visitHtml = () => (Cloud.visits ? `누적 방문 <b>${fmt(Cloud.visits.total)}</b> · 오늘 <b>${fmt(Cloud.visits.today)}</b>` : '');
+const firstDate = at => { const d = new Date(at + 9 * 3600e3); return `${d.getUTCFullYear()}.${d.getUTCMonth() + 1}.${d.getUTCDate()}`; };
+function firstHtml() {
+  const F = Cloud.firsts || {}, held = DIFFS.filter(d => F[d.id]), top = held[held.length - 1], next = DIFFS.find(d => !F[d.id]);
+  if (!top) return '<div class="fb-eye">첫 봉화 완주</div><b class="fb-name">아직 아무도 없습니다</b><span class="fb-sub">흑룡을 처음 쓰러뜨린 수호자의 이름이 여기 걸립니다</span>';
+  return `<div class="fb-eye">${top.name} 첫 봉화 완주</div><b class="fb-name"><small>수호자</small> ${F[top.id].id} <small>님</small></b><span class="fb-sub">${next ? `축하드립니다! · 다음: ${next.name} 첫 완주자를 기다립니다` : '축하드립니다!'}</span>`;
+}
+function showFirsts() {
+  const F = Cloud.firsts || {};
+  openModal(`<h2>첫 봉화 완주</h2><p class="dim">난이도마다 흑룡을 처음 쓰러뜨린 수호자입니다. 로그인한 상태로 이겨야 이름이 남습니다.</p><table class="rank"><thead><tr><th>난이도</th><th>수호자</th><th class="r">날짜</th></tr></thead><tbody>${DIFFS.map(d => `<tr><td>${d.name}</td><td>${F[d.id] ? `<b>${F[d.id].id}</b>` : '<span class="dim">기다리는 중</span>'}</td><td class="r">${F[d.id] ? firstDate(F[d.id].at) : '-'}</td></tr>`).join('')}</tbody></table><div class="actions"><button class="btn primary" data-act="close" data-focus>닫기</button></div>`);
+}
+// 봉수 소식
+const NEWS_KEY = 'bonghwa-news';
+const newsUnseen = () => { try { return localStorage.getItem(NEWS_KEY) !== NEWS[0].id; } catch (e) { return false; } };
+function showNews() {
+  try { localStorage.setItem(NEWS_KEY, NEWS[0].id); } catch (e) { /* storage unavailable */ }
+  $('.tl-row .new')?.remove();
+  openModal(`<h2>봉수 소식</h2><div class="news">${NEWS.map((n, i) => `<section${i ? '' : ' class="latest"'}><div class="eyebrow">${n.date}</div><h3>${n.title}</h3><ul>${n.items.map(t => `<li>${t}</li>`).join('')}</ul></section>`).join('')}</div>
+    <div class="note-box"><label for="noteIn">의견 보내기 <span class="dim">— 버그, 밸런스, 바라는 점 무엇이든</span></label><textarea id="noteIn" maxlength="500" rows="3" placeholder="예) 악몽 II 흑룡이 너무 단단해요"></textarea><div class="actions"><span class="dim small" id="noteMsg">${Cloud.acct ? `${Cloud.acct.id}(으)로 보냅니다` : '이름 없이 보냅니다'} · 답장은 드리지 못합니다</span><button class="btn primary" data-act="note-send">보내기</button></div></div>
+    <div class="actions"><button class="btn" data-act="close" data-focus>닫기</button></div>`, 'news-card');
+}
+async function sendNote(btn) {
+  const t = $('#noteIn'), msg = $('#noteMsg'), text = t.value.trim();
+  if (text.length < 2) { msg.textContent = '내용을 두 글자 이상 적어 주세요.'; t.focus(); return; }
+  btn.disabled = true; msg.textContent = '보내는 중…';
+  const r = Cloud.api ? await Cloud.call('POST', '/feedback', { text }) : { ok: false, message: '여기서는 의견을 보낼 수 없습니다.' };
+  btn.disabled = false;
+  if (r.ok) { t.value = ''; msg.textContent = '보냈습니다. 고맙습니다! 다음 소식에 반영해 볼게요.'; } else msg.textContent = r.message || '보내지 못했습니다.';
+}
+// 장작 보태기
+const donateLinks = () => SUPPORT.links.filter(l => /^https:\/\//.test(l.url));
+function showDonate() {
+  openModal(`<div class="eyebrow gold">장작 보태기</div><h2>봉화가 꺼지지 않게</h2><p>봉화대 사수는 광고 없이 무료로 만들고 있습니다. 보태 주신 장작은 서버비와 도메인, 새 무기·지도 개발에 씁니다.</p><p class="dim small">후원은 선물이라 게임 속 혜택은 없습니다. 랭킹전은 모두 같은 출발선입니다. 원하시면 보낼 때 아이디를 적어 주세요. 감사 명단에 올려 드립니다.</p>
+    <div class="actions donate">${donateLinks().map((l, i) => `<a class="btn${i ? '' : ' primary'}" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join('')}</div>
+    <div class="thanks"><h3>장작을 보태 주신 분들</h3>${SUPPORT.thanks.length ? `<p>${SUPPORT.thanks.join(' · ')}</p>` : '<p class="dim">첫 장작을 기다리고 있습니다</p>'}</div>
+    <div class="actions"><button class="btn" data-act="close" data-focus>닫기</button></div>`);
+}
 function adoptProfile(remote) { P = remote; try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
 
 // ── account window: 로그인 · 회원가입 · 비밀번호 재설정 ──

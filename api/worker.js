@@ -6,6 +6,8 @@ const ID_RE = /^[a-z][a-z0-9_]{3,15}$/;
 const PW_RE = /^[\x21-\x7e]{8,64}$/;
 const CODE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/;
 const WEEK_RE = /^\d{4}-W\d{2}$/;
+const DIFF_IDS = ['easy', 'normal', 'hard', 'nm1', 'nm2', 'nm3']; // same ids as DIFFS in data.js
+const NOTE_MAX = 500;
 const ITER = 100000, SESSION_DAYS = 180, RESET_TRIES = 5, LOCK_MS = 30 * 60e3, SAVE_MAX = 32 * 1024;
 
 const enc = new TextEncoder();
@@ -74,6 +76,12 @@ async function auth(req, env) {
   if (!row || Date.now() - row.created > SESSION_DAYS * 864e5) return null;
   return row.user_id;
 }
+// Tables added after launch are created on first use, so a deploy never needs a manual schema step.
+let ready = null;
+const ensureTables = env => (ready ??= env.DB.batch([
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS firsts (diff TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL)'),
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, text TEXT NOT NULL, at INTEGER NOT NULL)'),
+]).catch(e => { ready = null; throw e; }));
 async function body(req) { try { const b = await req.json(); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
 const int = (v, lo, hi) => (Number.isFinite(+v) ? Math.max(lo, Math.min(hi, Math.floor(+v))) : lo);
 
@@ -84,6 +92,7 @@ export default {
     // IPs are only used, hashed, as keys for short-lived rate-limit counters.
     const ip = (await sha256('bh:' + (req.headers.get('CF-Connecting-IP') || 'x'))).slice(0, 20);
     try {
+      await ensureTables(env);
       if (path === '/' ) return json(req, { ok: true, service: 'bonghwa-api', week: weekId() });
 
       if (path === '/signup' && req.method === 'POST') {
@@ -133,6 +142,22 @@ export default {
         return json(req, { day: today, ...(await visitCounts(env, today)) });
       }
 
+      // 첫 봉화 완주: 난이도마다 흑룡을 처음 쓰러뜨린 계정 (타이틀 화면 축하 띠).
+      if (path === '/firsts' && req.method === 'GET') {
+        const rows = await env.DB.prepare('SELECT diff, user_id AS id, at FROM firsts').all();
+        return json(req, { rows: rows.results });
+      }
+
+      // 봉수 소식 창의 의견 보내기. 로그인하지 않아도 되고, 아이디는 로그인했을 때만 함께 남긴다.
+      if (path === '/feedback' && req.method === 'POST') {
+        if (await limited(env, `note:${ip}:${dayKst()}`, 5, 86400e3)) return fail(req, 429, 'rate', '오늘은 의견을 더 보낼 수 없습니다. 내일 다시 보내 주세요.');
+        const b = await body(req), text = String(b.text || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim();
+        if (text.length < 2) return fail(req, 400, 'text', '내용을 두 글자 이상 적어 주세요.');
+        if (text.length > NOTE_MAX) return fail(req, 400, 'text', `내용은 ${NOTE_MAX}자까지 적을 수 있습니다.`);
+        await env.DB.prepare('INSERT INTO feedback (user_id, text, at) VALUES (?, ?, ?)').bind(await auth(req, env), text, Date.now()).run();
+        return json(req, { ok: true });
+      }
+
       if (path === '/rank' && req.method === 'GET') {
         const week = WEEK_RE.test(url.searchParams.get('week') || '') ? url.searchParams.get('week') : weekId();
         const rows = await env.DB.prepare('SELECT user_id AS id, score, round, win, kills, at FROM rank WHERE week = ? ORDER BY score DESC, at ASC LIMIT 50').bind(week).all();
@@ -152,7 +177,7 @@ export default {
       if (path === '/delete' && req.method === 'POST') {
         const b = await body(req), u = await env.DB.prepare('SELECT pw FROM users WHERE id = ?').bind(uid).first();
         if (!u || !(await checkSecret(String(b.pw || ''), u.pw))) return fail(req, 401, 'pw', '비밀번호가 맞지 않습니다.');
-        await env.DB.batch(['rank', 'saves', 'sessions'].map(t => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(uid)).concat(env.DB.prepare('DELETE FROM users WHERE id = ?').bind(uid)));
+        await env.DB.batch(['rank', 'saves', 'sessions', 'firsts', 'feedback'].map(t => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(uid)).concat(env.DB.prepare('DELETE FROM users WHERE id = ?').bind(uid)));
         return json(req, { ok: true });
       }
       if (path === '/logout' && req.method === 'POST') {
@@ -181,6 +206,14 @@ export default {
         if (cur && cur.score >= score) return json(req, { ok: true, kept: true, prev: cur.score });
         await env.DB.prepare('INSERT OR REPLACE INTO rank (user_id, week, score, round, win, kills, at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(uid, week, score, round, win ? 1 : 0, kills, Date.now()).run();
         return json(req, { ok: true, kept: false });
+      }
+      if (path === '/first' && req.method === 'POST') {
+        if (await limited(env, `first:${uid}`, 20, 86400e3)) return fail(req, 429, 'rate', '잠시 뒤 다시 해 주세요.');
+        const diff = String((await body(req)).diff || '');
+        if (!DIFF_IDS.includes(diff)) return fail(req, 400, 'diff', '없는 난이도입니다.');
+        const r = await env.DB.prepare('INSERT OR IGNORE INTO firsts (diff, user_id, at) VALUES (?, ?, ?)').bind(diff, uid, Date.now()).run();
+        const row = await env.DB.prepare('SELECT user_id AS id, at FROM firsts WHERE diff = ?').bind(diff).first();
+        return json(req, { ok: true, first: r.meta.changes > 0, holder: row });
       }
       return fail(req, 404, 'path', '없는 주소입니다.');
     } catch (e) {
