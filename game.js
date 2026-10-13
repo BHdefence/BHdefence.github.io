@@ -58,6 +58,8 @@ function weekId() {
   return `${th.getUTCFullYear()}-W${String(wk).padStart(2, '0')}`;
 }
 const dayId = () => kstNow().toISOString().slice(0, 10);
+// Ranked tries refill at 22:00 KST, the same moment the ranked week turns over.
+const rankDayId = () => new Date(kstNow().getTime() + WEEK_SHIFT).toISOString().slice(0, 10);
 // Time left until the next Sunday 22:00 KST, as '2일 5시간' / '3시간 12분'.
 function resetLeft() {
   const d = new Date(kstNow().getTime() + WEEK_SHIFT), sinceMon = ((d.getUTCDay() + 6) % 7) * 864e5 + (d.getTime() % 864e5), left = 7 * 864e5 - sinceMon;
@@ -65,7 +67,7 @@ function resetLeft() {
   return dd ? `${dd}일 ${hh}시간` : hh ? `${hh}시간 ${mm}분` : `${mm}분`;
 }
 const RANK_TRIES = 3;
-function triesLeft() { return P.ranked.day === dayId() ? Math.max(0, RANK_TRIES - P.ranked.used) : RANK_TRIES; }
+function triesLeft() { return P.ranked.day === rankDayId() ? Math.max(0, RANK_TRIES - P.ranked.used) : RANK_TRIES; }
 
 // ───────────────────────── sound ─────────────────────────
 const Sfx = {
@@ -1479,7 +1481,7 @@ function renderRankMenu() {
   const wk = weekId(), left = triesLeft(), mine = P.records.filter(r => r.week === wk)[0];
   $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('주간 랭킹전')}<div class="rank-grid"><div class="rank-info">
     <div class="eyebrow gold">${wk} 주차</div><h3>모두가 같은 상점과 같은 적 순서로 겨룹니다</h3>
-    <ul class="rules"><li>난이도는 <b>보통</b>으로 고정됩니다</li><li><b>매주 일요일 22시(한국 시간)</b>에 새 주가 시작되고 순위가 새로 쌓입니다 · 다음 갱신까지 <b>${resetLeft()}</b></li><li>한 주 동안 상점 물건과 적이 나오는 순서가 모두에게 같습니다</li><li>하루 ${RANK_TRIES}번 도전할 수 있습니다 (한국 시간 자정에 다시 채워짐)</li><li>점수 = 버틴 라운드 × 1,000. 승리하면 +30,000과 남은 체력 보너스(최대 5,000)</li><li>같은 라운드끼리는 그 라운드를 더 오래 버틴 사람이, 승리끼리는 흑룡을 더 빨리 잡은 사람이 위입니다(최대 999점)</li><li><b>수호 기억은 적용되지 않습니다.</b> 모두 같은 출발선에서 겨룹니다</li></ul>
+    <ul class="rules"><li>난이도는 <b>보통</b>으로 고정됩니다</li><li><b>매주 일요일 22시(한국 시간)</b>에 새 주가 시작되고 순위가 새로 쌓입니다 · 다음 갱신까지 <b>${resetLeft()}</b></li><li>한 주 동안 상점 물건과 적이 나오는 순서가 모두에게 같습니다</li><li>하루 ${RANK_TRIES}번 도전할 수 있습니다 (매일 22시에 다시 채워짐)</li><li>점수 = 버틴 라운드 × 1,000. 승리하면 +30,000과 남은 체력 보너스(최대 5,000)</li><li>같은 라운드끼리는 그 라운드를 더 오래 버틴 사람이, 승리끼리는 흑룡을 더 빨리 잡은 사람이 위입니다(최대 999점)</li><li><b>수호 기억은 적용되지 않습니다.</b> 모두 같은 출발선에서 겨룹니다</li></ul>
     <p>오늘 남은 도전 <b class="gold">${left} / ${RANK_TRIES}</b>${mine ? ` · 이번 주 내 최고 <b class="gold">${fmt(mine.score)}</b>점` : ''}</p>
     ${Cloud.api ? (Cloud.acct ? `<p class="field-row">참가 아이디 <b class="gold">${Cloud.acct.id}</b></p>` : '<p class="field-row">주간 랭킹전은 로그인해야 참가할 수 있습니다. 명예의 전당에는 아이디가 올라갑니다.</p>') : '<label class="field-row">닉네임 <input id="nickMenu" maxlength="12" placeholder="랭킹에 표시할 이름" autocomplete="off"></label>'}
     ${Cloud.api && !Cloud.acct ? '<button class="btn primary big" data-act="acct" data-id="login" data-focus>로그인 · 회원가입</button>' : `<button class="btn primary big" data-act="rankStart" ${left ? '' : 'disabled'} data-focus>${left ? '▶ 랭킹전 출전' : '오늘 도전을 모두 썼습니다'}</button>`}</div>
@@ -1517,7 +1519,7 @@ function renderSettings() {
     <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.${Cloud.api ? (Cloud.acct ? ` (계정: ${Cloud.acct.id})` : ' 로그인하면 다른 기기에서도 이어서 할 수 있습니다.') : ''}</p><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div>`;
 }
 function startRun(diffId, ranked) {
-  if (ranked) { if (triesLeft() <= 0) return; if (P.ranked.day !== dayId()) P.ranked = { day: dayId(), used: 0 }; P.ranked.used++; persist(); }
+  if (ranked) { if (triesLeft() <= 0) return; if (P.ranked.day !== rankDayId()) P.ranked = { day: rankDayId(), used: 0 }; P.ranked.used++; persist(); }
   closeModal(); newRun(diffId, ranked); mode = 'run'; paused = false; speed = 1; fpanel = null; invFilter = 'all'; selected = null; hideTip();
   $('#menu').hidden = true; $('#fpanel').hidden = true; for (const b of $$('[data-act="fp"]')) b.classList.remove('on');
   renderShop(); renderInv(); renderHud(true); Sfx.ensure();
