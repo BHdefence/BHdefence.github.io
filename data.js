@@ -203,7 +203,7 @@ const DIFFS = [
   { id: 'nm3',   name: '악몽 III', hp: 3.2, count: 1.4, boss: 3.8, edmg: 1.6, income: 1.0, mem: 3.0, theme: 'night',  note: ['가장 깊은 악몽', '이기면 저승길 I이 열립니다'], req: 'nm2' },
   { id: 'nether',  name: '저승길 I',   hp: 3.3, count: 1.4,  boss: 3.9, edmg: 1.6,  income: 1.0, mem: 3.5, theme: 'nether', revive: 0.15, ghost: 0.35, note: ['꽃무릇이 핀 저승 들판', '쓰러진 적의 15%가 원혼으로 다시 일어납니다 (체력 35%)'], req: 'nm3' },
   { id: 'nether2', name: '저승길 II',  hp: 3.6, count: 1.45, boss: 4.3, edmg: 1.65, income: 1.0, mem: 4.0, theme: 'nether', revive: 0.2,  ghost: 0.4,  note: ['원혼이 더 자주 일어납니다', '쓰러진 적의 20%가 원혼으로 (체력 40%)'], req: 'nether' },
-  { id: 'nether3', name: '저승길 III', hp: 4.0, count: 1.5,  boss: 4.8, edmg: 1.75, income: 1.0, mem: 4.5, theme: 'nether', revive: 0.25, ghost: 0.5,  note: ['저승의 가장 깊은 곳', '쓰러진 적의 25%가 원혼으로 (체력 50%)'], req: 'nether2' },
+  { id: 'nether3', name: '저승길 III', hp: 4.0, count: 1.5,  boss: 4.8, edmg: 1.785, income: 1.0, mem: 4.5, theme: 'nether', revive: 0.25, ghost: 0.5,  note: ['저승의 가장 깊은 곳', '쓰러진 적의 25%가 원혼으로 (체력 50%)'], req: 'nether2' },
 ];
 const DIFF = Object.fromEntries(DIFFS.map(d => [d.id, d]));
 
