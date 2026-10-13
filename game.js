@@ -1403,7 +1403,7 @@ function showMenu(view = 'title') {
       </nav></div>
       <aside class="corner paper"><div><span class="dim">기억 조각</span> <b class="gold">${fmt(P.shards)}</b></div><div><span class="dim">이긴 난이도</span> ${wins.length ? wins.join(' · ') : '아직 없음'}</div><div><span class="dim">플레이</span> ${fmt(P.runs)}판</div></aside>
       <div class="visits" id="visits">${visitHtml()}</div>
-      <footer class="credit"><a href="about.html">게임 소개</a> · <a href="privacy.html">개인정보처리방침</a> · 글꼴 Galmuri (SIL OFL 1.1)</footer>`;
+      <footer class="credit"><a href="https://blog.naver.com/bhdefence" target="_blank" rel="noopener">공식 블로그</a> · <a href="about.html">게임 소개</a> · <a href="privacy.html">개인정보처리방침</a> · 글꼴 Galmuri (SIL OFL 1.1)</footer>`;
   } else if (view === 'select') renderSelect();
   else if (view === 'perks') renderPerks();
   else if (view === 'hall') renderHall();
@@ -1743,7 +1743,7 @@ function showNews() {
   $('.tl-row .new')?.remove();
   openModal(`<h2>봉수 소식</h2><div class="news">${NEWS.map((n, i) => `<section${i ? '' : ' class="latest"'}><div class="eyebrow">${n.date}</div><h3>${n.title}</h3><ul>${n.items.map(t => `<li>${t}</li>`).join('')}</ul></section>`).join('')}</div>
     <div class="note-box"><label for="noteIn">의견 보내기 <span class="dim">— 버그, 밸런스, 바라는 점 무엇이든</span></label><textarea id="noteIn" maxlength="500" rows="3" placeholder="예) 악몽 II 흑룡이 너무 단단해요"></textarea><div class="actions"><span class="dim small" id="noteMsg">${Cloud.acct ? `${Cloud.acct.id}(으)로 보냅니다` : '이름 없이 보냅니다'} · 답장은 드리지 못합니다</span><button class="btn primary" data-act="note-send">보내기</button></div></div>
-    <div class="actions"><button class="btn" data-act="close" data-focus>닫기</button></div>`, 'news-card');
+    <div class="actions"><a class="btn" href="https://blog.naver.com/bhdefence" target="_blank" rel="noopener">공식 블로그 · 개발 노트</a><button class="btn" data-act="close" data-focus>닫기</button></div>`, 'news-card');
 }
 async function sendNote(btn) {
   const t = $('#noteIn'), msg = $('#noteMsg'), text = t.value.trim();
