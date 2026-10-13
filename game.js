@@ -16,7 +16,7 @@ const bagFullFor = id => slotsUsed() >= INV_MAX && !owned(id);
 
 // ───────────────────────── profile (persistent) ─────────────────────────
 const SAVE_KEY = 'bonghwa-v1';
-function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, tutorial: false, sound: true, nick: '', ranked: { day: '', used: 0 }, records: [], savedAt: 0 }; }
+function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, tutorial: false, sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [], savedAt: 0 }; }
 const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 const cleanNick = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12);
 function cleanRec(id, d) {
@@ -29,7 +29,7 @@ function sanitizeProfile(o) {
   if (o.perks && typeof o.perks === 'object') for (const k in PERK) if (o.perks[k] != null) p.perks[k] = clamp(Math.floor(num(o.perks[k])), 0, PERK[k].max);
   for (const key of ['wins', 'best']) if (o[key] && typeof o[key] === 'object') for (const d of DIFFS) if (o[key][d.id] != null) p[key][d.id] = Math.max(0, Math.floor(num(o[key][d.id])));
   p.runs = Math.max(0, Math.floor(num(o.runs)));
-  p.tutorial = !!o.tutorial; p.sound = o.sound !== false; p.nick = cleanNick(o.nick);
+  p.tutorial = !!o.tutorial; p.sound = o.sound !== false; p.music = o.music !== false; p.nick = cleanNick(o.nick);
   if (o.ranked && typeof o.ranked === 'object') p.ranked = { day: String(o.ranked.day || '').slice(0, 10), used: clamp(Math.floor(num(o.ranked.used)), 0, 9) };
   if (Array.isArray(o.records)) p.records = o.records.slice(0, 30).map(r => cleanRec('local', r)).filter(Boolean);
   p.savedAt = num(o.savedAt);
@@ -55,7 +55,7 @@ function triesLeft() { return P.ranked.day === dayId() ? Math.max(0, RANK_TRIES 
 // ───────────────────────── sound ─────────────────────────
 const Sfx = {
   ctx: null, last: {},
-  ensure() { if (!P.sound) return null; try { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (this.ctx.state === 'suspended') this.ctx.resume(); } catch (e) { return null; } return this.ctx; },
+  ensure() { if (!P.sound && !P.music) return null; try { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (this.ctx.state === 'suspended') this.ctx.resume(); } catch (e) { return null; } return this.ctx; },
   play(name, gap = 50) {
     if (!P.sound) return; const now = performance.now(); if (this.last[name] && now - this.last[name] < gap) return; this.last[name] = now;
     const c = this.ensure(); if (!c || c.state !== 'running') return; try { SND[name] && SND[name](c); } catch (e) { /* ignore */ }
@@ -91,6 +91,99 @@ const SND = {
   lose: c => [392, 330, 262, 196].forEach((f, i) => tone(c, { f, d: 0.3, type: 'triangle', v: 0.05, delay: i * 0.18 })),
   gift: c => [784, 988, 1175].forEach((f, i) => tone(c, { f, d: 0.12, v: 0.03, delay: i * 0.08 })),
 };
+
+// ───────────────────────── 배경음악 (국악풍, 실시간 합성) ─────────────────────────
+// No audio files: a 대금-like flute line on a pentatonic scale, 가야금 plucks and 장구 strokes are synthesised and
+// scheduled a little ahead of time. Each scene has its own 장단 (rhythmic cycle) and speed:
+//   title  — 진양조 feel, slow and sparse;  battle — 자진모리, brisk;  boss — 휘모리, fast with a heavy 북.
+const MOODS = {
+  title:  { bpm: 52,  steps: 12, drum: '덩..........쿵..덕....쿵....', base: 293.66, density: 0.35, low: 0, high: 7, plucks: 0.25, vol: 1.2 },
+  battle: { bpm: 104, steps: 12, drum: '덩..쿵.덕..쿵.덕.', base: 293.66, density: 0.6, low: 2, high: 9, plucks: 0.5, vol: 0.75 },
+  boss:   { bpm: 150, steps: 8,  drum: '덩.쿵덕덩.쿵덕', base: 261.63, density: 0.75, low: 3, high: 10, plucks: 0.65, vol: 0.8, buk: true },
+};
+// 평조-like pentatonic, two octaves of degrees in semitones above the base
+const PENTA = [0, 2, 5, 7, 9, 12, 14, 17, 19, 21, 24];
+const Music = {
+  mood: null, want: null, out: null, next: 0, step: 0, deg: 4, hold: 0, fade: null,
+  vol() { return P.music === false ? 0 : 0.8; },
+  node(c) {
+    if (this.out && this.out.context === c) return this.out;
+    this.out = c.createGain(); this.out.gain.value = 0;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
+    this.out.connect(lp).connect(c.destination);
+    return this.out;
+  },
+  set(mood) { this.want = mood; },
+  tick() {
+    const c = Sfx.ctx; if (!c || c.state !== 'running') return;
+    const out = this.node(c), target = this.want && this.vol() ? this.vol() * MOODS[this.want].vol * (paused ? 0.45 : 1) : 0;
+    if (this.want !== this.mood) {
+      // fade out, switch, fade back in
+      out.gain.cancelScheduledValues(c.currentTime); out.gain.setTargetAtTime(0, c.currentTime, 0.25);
+      if (out.gain.value < 0.02 || !this.mood) { this.mood = this.want; this.next = c.currentTime + 0.1; this.step = 0; this.hold = 0; }
+      return;
+    }
+    if (!this.mood) return;
+    out.gain.setTargetAtTime(target, c.currentTime, 0.4);
+    const M = MOODS[this.mood], dt = 60 / M.bpm / 3; // three pulses per beat
+    while (this.next < c.currentTime + 0.3) { this.play(c, out, M, this.next, dt); this.next += dt; this.step++; }
+  },
+  play(c, out, M, t, dt) {
+    const cyc = M.drum.length, ch = M.drum[this.step % cyc];
+    if (ch === '덩') { this.drum(c, out, t, 'low', 1); this.drum(c, out, t, 'high', 0.6); }
+    else if (ch === '쿵') this.drum(c, out, t, 'low', 0.8);
+    else if (ch === '덕') this.drum(c, out, t, 'high', 0.8);
+    if (M.buk && this.step % 3 === 0) this.drum(c, out, t, 'buk', this.step % (cyc) === 0 ? 1 : 0.5);
+    // 가야금: low plucks on the strong pulses, outlining tonic and fifth
+    if (this.step % 3 === 0 && Math.random() < M.plucks) this.pluck(c, out, t, M.base / 2 * Math.pow(2, PENTA[[0, 3, 0, 2][(this.step / 3 | 0) % 4]] / 12));
+    // 대금 melody: random walk on the scale, long notes with vibrato, phrases resolve to the tonic
+    if (this.hold > 0) { this.hold--; return; }
+    if (Math.random() > M.density) { this.hold = 1 + (Math.random() * 2 | 0); return; }
+    const end = this.step % (cyc * 2) >= cyc * 2 - 6;
+    const tonic = clamp(5, M.low, M.high); // the octave above the base note
+    this.deg = end ? tonic : clamp(this.deg + [-2, -1, -1, 1, 1, 2][Math.random() * 6 | 0], M.low, M.high);
+    const len = end ? 6 : [2, 3, 3, 4, 6][Math.random() * 5 | 0];
+    this.hold = len - 1;
+    this.flute(c, out, t, M.base * Math.pow(2, PENTA[this.deg] / 12), len * dt);
+  },
+  flute(c, out, t, f, d) {
+    const o = c.createOscillator(), o2 = c.createOscillator(), g = c.createGain(), lfo = c.createOscillator(), lg = c.createGain();
+    o.type = 'triangle'; o2.type = 'sine'; o.frequency.setValueAtTime(f * 0.97, t); o.frequency.linearRampToValueAtTime(f, t + 0.08); o2.frequency.value = f * 2;
+    lfo.frequency.value = 5.2; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.012, t + Math.min(d, 0.5));
+    lfo.connect(lg); lg.connect(o.frequency); lg.connect(o2.frequency);
+    const g2 = c.createGain(); g2.gain.value = 0.18; o2.connect(g2).connect(g);
+    o.connect(g); g.connect(out);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.09, t + 0.06); g.gain.setValueAtTime(0.08, t + Math.max(0.07, d - 0.12)); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.15);
+    for (const x of [o, o2, lfo]) { x.start(t); x.stop(t + d + 0.2); }
+    // breath at the attack
+    this.noise(c, out, t, 0.08, 0.015, 2400, 'bandpass');
+  },
+  pluck(c, out, t, f) {
+    const o = c.createOscillator(), g = c.createGain(); o.type = 'triangle';
+    o.frequency.setValueAtTime(f * 1.01, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+    g.gain.setValueAtTime(0.11, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+    o.connect(g).connect(out); o.start(t); o.stop(t + 1);
+  },
+  drum(c, out, t, kind, v) {
+    if (kind === 'high') { this.noise(c, out, t, 0.07, 0.07 * v, 3200, 'highpass'); return; }
+    const o = c.createOscillator(), g = c.createGain(), f = kind === 'buk' ? 70 : 110;
+    o.type = 'sine'; o.frequency.setValueAtTime(f * 1.8, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.08);
+    g.gain.setValueAtTime((kind === 'buk' ? 0.32 : 0.2) * v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (kind === 'buk' ? 0.5 : 0.3));
+    o.connect(g).connect(out); o.start(t); o.stop(t + 0.55);
+    this.noise(c, out, t, 0.04, 0.03 * v, 900, 'lowpass');
+  },
+  noise(c, out, t, d, v, f, type) {
+    if (!noiseBuf) { noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
+    const s = c.createBufferSource(), fl = c.createBiquadFilter(), g = c.createGain();
+    s.buffer = noiseBuf; fl.type = type; fl.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    s.connect(fl).connect(g).connect(out); s.start(t, Math.random() * 0.5, d + 0.05);
+  },
+};
+function musicMood() {
+  if (mode !== 'run' || !R) return 'title';
+  if (R.state !== 'run') return null;
+  return R.enemies.some(e => e.boss && e.hp > 0) ? 'boss' : 'battle';
+}
 
 // ───────────────────────── run state ─────────────────────────
 let R = null, mode = 'menu', paused = false, speed = 1, uidSeq = 0, eidSeq = 0;
@@ -835,6 +928,7 @@ function renderTitle(dt) {
 let lastT = performance.now(), uiT = 0;
 function frame(now) {
   const dt = Math.min(0.05, Math.max(0, (now - lastT) / 1000)); lastT = now; clock += dt;
+  Music.set(musicMood()); Music.tick();
   if (mode === 'run' && R) {
     if (hitStop > 0) hitStop -= dt;
     else if (!paused && !R.gift && R.state === 'run') for (let i = 0; i < speed; i++) update(dt);
@@ -1356,7 +1450,7 @@ function renderHall() {
 }
 let resetArmed = 0;
 function renderSettings() {
-  $('#menuBody').innerHTML = `${scrollOpen('narrow')}${panelHead('설정')}<div class="settings"><button class="btn" data-act="sound">소리 ${P.sound ? '켬' : '끔'}</button>
+  $('#menuBody').innerHTML = `${scrollOpen('narrow')}${panelHead('설정')}<div class="settings"><div class="actions" style="flex:none"><button class="btn" data-act="sound">효과음 ${P.sound ? '켬' : '끔'}</button><button class="btn" data-act="music">배경음악 ${P.music !== false ? '켬' : '끔'} [M]</button></div>
     <h3>조작</h3><table class="keys"><tr><td>1 ~ 8</td><td>상점 칸 구매 (휴대폰은 두 번 눌러 구매)</td></tr><tr><td>R</td><td>상점 새로고침</td></tr><tr><td>Z</td><td>천벌: 화면의 적을 한꺼번에 쓸어냅니다 (보스는 일부 피해)</td></tr><tr><td>B · D · G · H</td><td>세트 · 딜미터 · 사거리 · 상성표</td></tr><tr><td>Tab</td><td>배속 ×1 ×2 ×3</td></tr><tr><td>Space · Esc</td><td>잠시 멈춤</td></tr></table>
     <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.${Cloud.api ? (Cloud.acct ? ` (계정: ${Cloud.acct.id})` : ' 로그인하면 다른 기기에서도 이어서 할 수 있습니다.') : ''}</p><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div>`;
 }
@@ -1434,6 +1528,7 @@ document.addEventListener('click', ev => {
     case 'perk': buyPerk(id); break;
     case 'hallView': hallView = id; if (menuView === 'rank') renderRankMenu(); else renderHall(); break;
     case 'sound': P.sound = !P.sound; persist(); renderSettings(); break;
+    case 'music': P.music = P.music === false; persist(); Sfx.ensure(); renderSettings(); break;
     case 'reset': if (Date.now() - resetArmed > 4000) { resetArmed = Date.now(); el.textContent = '한 번 더 누르면 모두 지워집니다'; } else { resetArmed = 0; const keep = { sound: P.sound, nick: P.nick }; P = Object.assign(newProfile(), keep); persist(); toast('모든 진행을 지웠습니다'); renderSettings(); } break;
     case 'rotate-skip': rotateChoice = 'port'; fit(); break;
     case 'rotate-go': goLandscape(); break;
@@ -1462,6 +1557,7 @@ window.addEventListener('keydown', ev => {
   else if (k === 'KeyD') toggleFPanel('meter');
   else if (k === 'KeyH') toggleFPanel('match');
   else if (k === 'KeyG') { R.showRange = !R.showRange; $('#bRange').classList.toggle('on', R.showRange); }
+  else if (k === 'KeyM') { P.music = P.music === false; persist(); Sfx.ensure(); toast(P.music ? '배경음악 켬' : '배경음악 끔'); }
   else if (k === 'Tab') { speed = speed % 3 + 1; renderHud(true); ev.preventDefault(); }
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'run' && R && R.state === 'run' && !paused && !R.gift && P.tutorial) setPaused(true); });
