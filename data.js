@@ -231,6 +231,9 @@ const PERKS = [
   { id: 'might',  name: '노련함',     max: 5, base: 10, desc: l => `모든 피해 +${l * 3}%` },
   { id: 'smite',  name: '천벌 재충전', max: 1, base: 40, desc: l => `천벌 ${1 + l}회` },
 ];
+// Level costs climb steeply (base × 5 × level^1.5, rounded to 5): the first levels come quickly, the last ones
+// are a long-term goal. All perks together cost 6,745 shards.
+const perkCost = (p, l) => Math.max(5, Math.round(p.base * 5 * Math.pow(l + 1, 1.5) / 5) * 5);
 const PERK = Object.fromEntries(PERKS.map(p => [p.id, p]));
 
 const GIFTS = [
@@ -246,6 +249,11 @@ const giftTier = r => Math.min(3, 1 + Math.floor(r / 15));
 
 // 봉수 소식: newest first. A new `id` lights the NEW mark on the title screen until the player opens it.
 const NEWS = [
+  { id: '2026-10-14f', date: '10월 14일', title: '수호 기억 비용 조정 · 플레이 시간 기록', items: [
+    '수호 기억이 너무 빨리 다 채워져서 비용을 올렸습니다. 1레벨은 비교적 빨리, 높은 레벨일수록 크게 비싸집니다 (전부 배우는 데 760 → 6,745조각).',
+    '이미 배운 수호 기억은 그대로 유지됩니다.',
+    '타이틀 화면 오른쪽 위에 총 플레이 시간이 나오고, 악몽 III을 처음 이기면 저승길까지 걸린 시간이 기록됩니다.',
+  ] },
   { id: '2026-10-14e', date: '10월 14일', title: '주간 랭킹전 갱신 시간', items: [
     '주간 랭킹전은 이제 매주 일요일 22시(한국 시간)에 새 주가 시작됩니다. 랭킹전 화면에 다음 갱신까지 남은 시간이 나옵니다.',
     '하루 3번 도전 횟수도 매일 22시에 다시 채워집니다.',

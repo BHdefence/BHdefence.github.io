@@ -17,7 +17,7 @@ const stackCapped = id => ITEM[id].cat !== 'weapon' && owned(id) >= STACK_MAX;
 
 // ───────────────────────── profile (persistent) ─────────────────────────
 const SAVE_KEY = 'bonghwa-v1';
-function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, tutorial: false, sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [], savedAt: 0 }; }
+function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, playSec: 0, netherAt: 0, tutorial: false, sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [], savedAt: 0 }; }
 const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 const cleanNick = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12);
 function cleanRec(id, d) {
@@ -29,7 +29,7 @@ function sanitizeProfile(o) {
   p.shards = Math.max(0, Math.floor(num(o.shards)));
   if (o.perks && typeof o.perks === 'object') for (const k in PERK) if (o.perks[k] != null) p.perks[k] = clamp(Math.floor(num(o.perks[k])), 0, PERK[k].max);
   for (const key of ['wins', 'best']) if (o[key] && typeof o[key] === 'object') for (const d of DIFFS) if (o[key][d.id] != null) p[key][d.id] = Math.max(0, Math.floor(num(o[key][d.id])));
-  p.runs = Math.max(0, Math.floor(num(o.runs)));
+  p.runs = Math.max(0, Math.floor(num(o.runs))); p.playSec = Math.max(0, num(o.playSec)); p.netherAt = Math.max(0, num(o.netherAt));
   p.tutorial = !!o.tutorial; p.sound = o.sound !== false; p.music = o.music !== false; p.nick = cleanNick(o.nick);
   if (o.ranked && typeof o.ranked === 'object') p.ranked = { day: String(o.ranked.day || '').slice(0, 10), used: clamp(Math.floor(num(o.ranked.used)), 0, 9) };
   if (Array.isArray(o.records)) p.records = o.records.slice(0, 30).map(r => cleanRec('local', r)).filter(Boolean);
@@ -61,6 +61,7 @@ const dayId = () => kstNow().toISOString().slice(0, 10);
 // Ranked tries refill at 22:00 KST, the same moment the ranked week turns over.
 const rankDayId = () => new Date(kstNow().getTime() + WEEK_SHIFT).toISOString().slice(0, 10);
 // Time left until the next Sunday 22:00 KST, as '2일 5시간' / '3시간 12분'.
+const hoursText = sec => { const m = Math.floor(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`; };
 function resetLeft() {
   const d = new Date(kstNow().getTime() + WEEK_SHIFT), sinceMon = ((d.getUTCDay() + 6) % 7) * 864e5 + (d.getTime() % 864e5), left = 7 * 864e5 - sinceMon;
   const dd = Math.floor(left / 864e5), hh = Math.floor(left % 864e5 / 3600e3), mm = Math.floor(left % 3600e3 / 60e3);
@@ -706,7 +707,7 @@ function finishRun() {
   const shards = Math.floor(cleared * d.mem) + (won ? Math.round(25 * d.mem) : 0);
   P.shards += shards; P.runs++;
   P.best[d.id] = Math.max(P.best[d.id] || 0, won ? ROUNDS + 1 : R.round);
-  if (won) { P.wins[d.id] = (P.wins[d.id] || 0) + 1; Cloud.claimFirst(d.id); }
+  if (won) { P.wins[d.id] = (P.wins[d.id] || 0) + 1; Cloud.claimFirst(d.id); if (d.id === 'nm3' && !P.netherAt) P.netherAt = Math.round(P.playSec); }
   let rec = null;
   if (R.ranked) {
     rec = { week: weekId(), score: runScore(), round: won ? ROUNDS + 1 : R.round, win: won, kills: R.kills, nick: P.nick || '', at: Date.now() };
@@ -991,6 +992,8 @@ let lastT = performance.now(), uiT = 0;
 function frame(now) {
   const dt = Math.min(0.05, Math.max(0, (now - lastT) / 1000)); lastT = now; clock += dt;
   Music.set(musicMood()); Music.tick();
+  // total play time: real seconds spent in a live run (not paused, not in menus or a hidden tab)
+  if (mode === 'run' && R && R.state === 'run' && !paused && !document.hidden) P.playSec += dt;
   if (mode === 'run' && R) {
     if (hitStop > 0) hitStop -= dt;
     else if (!paused && !R.gift && R.state === 'run') for (let i = 0; i < speed; i++) update(dt);
@@ -1433,7 +1436,7 @@ function showMenu(view = 'title') {
         <button class="mbtn" data-act="hall">명예의 전당</button>
         <button class="mbtn" data-act="settings">설정</button>
       </nav></div>
-      <aside class="corner paper"><div><span class="dim">기억 조각</span> <b class="gold">${fmt(P.shards)}</b></div><div><span class="dim">이긴 난이도</span> ${wins.length ? wins.join(' · ') : '아직 없음'}</div><div><span class="dim">플레이</span> ${fmt(P.runs)}판</div></aside>
+      <aside class="corner paper"><div><span class="dim">기억 조각</span> <b class="gold">${fmt(P.shards)}</b></div><div><span class="dim">이긴 난이도</span> ${wins.length ? wins.join(' · ') : '아직 없음'}</div><div><span class="dim">플레이</span> ${fmt(P.runs)}판 · ${hoursText(P.playSec)}</div>${P.netherAt ? `<div><span class="dim">저승길까지</span> ${hoursText(P.netherAt)}</div>` : ''}</aside>
       <div class="visits" id="visits">${visitHtml()}</div>
       <footer class="credit"><a href="https://blog.naver.com/bhdefence" target="_blank" rel="noopener">공식 블로그</a> · <a href="about.html">게임 소개</a> · <a href="privacy.html">개인정보처리방침</a> · 글꼴 Galmuri (SIL OFL 1.1)</footer>`;
   } else if (view === 'select') renderSelect();
@@ -1470,10 +1473,10 @@ function drawPreview(d) {
 }
 function renderPerks() {
   $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('수호 기억')}<p class="lead">판을 마칠 때마다 버틴 라운드만큼 <b class="gold">기억 조각</b>이 쌓입니다. 조각으로 봉화대를 영구히 키우세요. 지금 <b class="gold">${fmt(P.shards)}</b>개.</p>
-    <div class="perks">${PERKS.map(p => { const l = perkL(p.id), max = l >= p.max, cost = p.base * (l + 1); return `<div class="perk"><div class="ph"><b>${p.name}</b><span class="lv">${l} / ${p.max}</span></div><div class="pips">${Array.from({ length: p.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('')}</div><p>${l ? p.desc(l) : '아직 배우지 않음'}</p>${max ? '<p class="gold">다 배웠습니다</p>' : `<p class="dim">다음: ${p.desc(l + 1)}</p><button class="btn primary" data-act="perk" data-id="${p.id}" ${P.shards < cost ? 'disabled' : ''}>조각 ${cost}개로 배우기</button>`}</div>`; }).join('')}</div></div>`;
+    <div class="perks">${PERKS.map(p => { const l = perkL(p.id), max = l >= p.max, cost = perkCost(p, l); return `<div class="perk"><div class="ph"><b>${p.name}</b><span class="lv">${l} / ${p.max}</span></div><div class="pips">${Array.from({ length: p.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('')}</div><p>${l ? p.desc(l) : '아직 배우지 않음'}</p>${max ? '<p class="gold">다 배웠습니다</p>' : `<p class="dim">다음: ${p.desc(l + 1)}</p><button class="btn primary" data-act="perk" data-id="${p.id}" ${P.shards < cost ? 'disabled' : ''}>조각 ${cost}개로 배우기</button>`}</div>`; }).join('')}</div></div>`;
 }
 function buyPerk(id) {
-  const p = PERK[id], l = perkL(id), cost = p.base * (l + 1); if (l >= p.max || P.shards < cost) return;
+  const p = PERK[id], l = perkL(id), cost = perkCost(p, l); if (l >= p.max || P.shards < cost) return;
   P.shards -= cost; P.perks[id] = l + 1; persist(); Sfx.play('buy'); renderPerks();
   const b = $(`[data-act="perk"][data-id="${id}"]`); if (b) b.focus();
 }
@@ -1631,7 +1634,7 @@ window.addEventListener('keydown', ev => {
   else if (k === 'KeyG') { R.showRange = !R.showRange; $('#bRange').classList.toggle('on', R.showRange); }
   else if (k === 'Tab') { speed = speed % 3 + 1; renderHud(true); ev.preventDefault(); }
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'run' && R && R.state === 'run' && !paused && !R.gift && P.tutorial) setPaused(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'run' && R) persist(); if (document.hidden && mode === 'run' && R && R.state === 'run' && !paused && !R.gift && P.tutorial) setPaused(true); });
 
 // ───────────────────────── accounts, shared ranking & cloud save ─────────────────────────
 // Two backends. Inside the claude.ai artifact viewer `window.claude.use` reaches a shared store (`rank/<viewer id>`,
