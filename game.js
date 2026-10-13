@@ -131,9 +131,11 @@ function computeStats() {
     maxHp: Math.round(BASE.hp * (1 + perkL('hp') * 0.06)), regen: BASE.regen, shield: 0, dr: 0, thorn: 0, thornPow: 0,
     freeRerolls: BASE.freeRerolls + perkL('reroll'), typeCount: {}, elemCount: {}, typeStep: {}, elemStep: {}, thornElems: [],
   };
+  // Sets count DIFFERENT items: stacking copies of one weapon (×2, ×3) adds its firepower but not set progress.
+  const counted = new Set();
   for (const it of R.items) {
-    const d = ITEM[it.id];
-    if (d.cat === 'weapon') s.typeCount[d.type] = (s.typeCount[d.type] || 0) + 1;
+    const d = ITEM[it.id], first = !counted.has(it.id); counted.add(it.id);
+    if (d.cat === 'weapon') { if (first) s.typeCount[d.type] = (s.typeCount[d.type] || 0) + 1; }
     else {
       if (d.dmg) s.dmg += d.dmg;
       if (d.typeDmg) for (const k in d.typeDmg) s.typeDmg[k] += d.typeDmg[k];
@@ -144,7 +146,7 @@ function computeStats() {
       s.thorn += d.thorn || 0; s.thornPow += d.thornPow || 0;
       if (d.cat === 'thorn' && d.elem) s.thornElems.push(d.elem);
     }
-    for (const e of [d.elem, d.elem2]) if (e) s.elemCount[e] = (s.elemCount[e] || 0) + 1;
+    if (first) for (const e of [d.elem, d.elem2]) if (e) s.elemCount[e] = (s.elemCount[e] || 0) + 1;
   }
   s.dr = Math.min(0.6, s.dr);
   for (const t of TYPE_IDS) { const n = s.typeCount[t] || 0, step = TYPE_SET_STEPS.filter(x => n >= x).length; s.typeStep[t] = step; if (step) s.typeDmg[t] += TYPE_SET_DMG[step - 1]; }
@@ -1030,9 +1032,9 @@ function toggleFPanel(kind) {
   el.hidden = false; if (fpanel === 'set') renderSets(); else if (fpanel === 'meter') renderMeter(); else renderMatch();
 }
 function renderSets() {
-  const S = R.S; let h = '<h3>세트 효과 <span class="dim">[B]</span></h3><div class="sets">';
-  for (const t of TYPE_IDS) { const n = S.typeCount[t] || 0, st = S.typeStep[t]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${TYPES[t].color}">${TYPES[t].set}</b> <span class="dim">${TYPES[t].name} ${n}개</span><div class="steps">${TYPE_SET_STEPS.map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: +${pct(TYPE_SET_DMG[i])}</span>`).join('')}</div><div class="dim small">${TYPE_SET_PERK[t]}</div></div>`; }
-  for (const e of ELEM_IDS) { const n = S.elemCount[e] || 0, st = S.elemStep[e]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${ELEMS[e].color}">${ELEMS[e].set}</b> <span class="dim">${ELEMS[e].name} ${n}개</span><div class="steps">${ELEM_SET_STEPS.map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: ${ELEM_SET_TEXT[e][i]}</span>`).join('')}</div></div>`; }
+  const S = R.S; let h = '<h3>세트 효과 <span class="dim">[B]</span></h3><p class="dim small" style="margin:0 0 8px">서로 다른 물건만 셉니다. 같은 물건을 겹쳐 사도 세트 단계는 오르지 않습니다.</p><div class="sets">';
+  for (const t of TYPE_IDS) { const n = S.typeCount[t] || 0, st = S.typeStep[t]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${TYPES[t].color}">${TYPES[t].set}</b> <span class="dim">서로 다른 ${TYPES[t].name} ${n}종</span><div class="steps">${TYPE_SET_STEPS.map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: +${pct(TYPE_SET_DMG[i])}</span>`).join('')}</div><div class="dim small">${TYPE_SET_PERK[t]}</div></div>`; }
+  for (const e of ELEM_IDS) { const n = S.elemCount[e] || 0, st = S.elemStep[e]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${ELEMS[e].color}">${ELEMS[e].set}</b> <span class="dim">서로 다른 ${ELEMS[e].name} 물건 ${n}종</span><div class="steps">${ELEM_SET_STEPS.map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: ${ELEM_SET_TEXT[e][i]}</span>`).join('')}</div></div>`; }
   $('#fpanel').innerHTML = h + '</div>';
 }
 function renderMeter() {
@@ -1298,7 +1300,7 @@ function showTutorial() {
     <li>적은 사방의 어둠에서 봉수대로 몰려옵니다. 봉수대의 <b>다섯 홰</b>는 체력이라, 체력이 20% 줄 때마다 불 하나가 꺼집니다</li>
     <li>왼쪽 <b>장터</b>에서 무기를 사면 봉수대가 저절로 쏩니다. 엽전은 초당 수입과 처치 현상금으로 모입니다</li>
     <li>무기 종류마다 강한 갑옷이 있습니다. 위쪽 <b>이번 주력 / 다음 주력</b>을 보고 맞는 무기를 고르세요 (H 상성표)</li>
-    <li>같은 종류나 속성을 모으면 <b>세트 효과</b>가 붙습니다 (B)</li>
+    <li>같은 종류나 속성의 <b>서로 다른</b> 물건을 모으면 <b>세트 효과</b>가 붙습니다 (B)</li>
     <li>위기에는 <b>천벌</b>(Z)로 화면의 적을 쓸어내세요. 한 판에 한 번입니다</li></ul>
     <div class="actions"><button class="btn primary" data-act="tutDone" data-focus>알겠습니다</button></div>`);
 }
