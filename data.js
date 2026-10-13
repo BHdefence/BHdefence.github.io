@@ -37,13 +37,16 @@ const CATS = { weapon: '무기', upg: '강화', eco: '경제', surv: '생존', t
 
 // Set bonuses. Type sets count weapons of one type; element sets count every item carrying that element.
 const TYPE_SET_STEPS = [2, 4, 6];
+// 요괴굴 has only 5 요술 weapons, so its steps are lower. Sets count different items (see computeStats).
+const TYPE_SET_STEPS_BY = { chaos: [2, 3, 5] };
+const setSteps = t => TYPE_SET_STEPS_BY[t] || TYPE_SET_STEPS;
 const TYPE_SET_DMG = [0.15, 0.35, 0.7];
 const TYPE_SET_PERK = {
-  blade:  '4개부터 튕김 +1',
-  arrow:  '4개부터 관통 +1, 치명타 +8%',
-  charm:  '4개부터 동시 대상 +1',
-  cannon: '4개부터 폭발 범위 +30%',
-  chaos:  '4개부터 최소 배율 0.5 → 0.9',
+  blade:  '4종부터 튕김 +1',
+  arrow:  '4종부터 관통 +1, 치명타 +8%',
+  charm:  '4종부터 동시 대상 +1',
+  cannon: '4종부터 폭발 범위 +30%',
+  chaos:  '3종부터 최소 배율 0.5 → 0.9',
 };
 const ELEM_SET_STEPS = [2, 4];
 const ELEM_SET_TEXT = {

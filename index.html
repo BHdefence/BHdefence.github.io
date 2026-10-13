@@ -226,6 +226,28 @@ table.mt td.x2 { color: #1a120c; background: var(--gold); }
 .gift .key { position: absolute; bottom: 6px; left: 0; right: 0; color: rgba(255,230,190,.6); font-size: 14px; }
 .submit { display: flex; gap: 8px; } .submit input, .field-row input { flex: 1; min-width: 0; padding: 6px 10px; color: var(--ink); background: rgba(255,252,240,.7); border: 1px solid var(--line-2); border-radius: 2px; font-size: 20px; }
 
+/* 도감 */
+.cx-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.cx-tabs button { padding: 5px 18px; font-family: var(--serif); font-size: 19px; color: var(--ink-2); background: rgba(255,252,240,.45); border: 1px solid var(--line-2); border-radius: 2px; }
+.cx-tabs button.on { color: #fff2dc; background: var(--verm); border-color: var(--verm); }
+.cx-body-wrap { display: flex; flex-direction: column; gap: 10px; }
+.cx-body-wrap h3 { margin: 6px 0 4px; }
+.cx-lead { margin: 0; font-size: 17px; line-height: 1.6; } .cx-lead b { color: var(--verm); font-weight: 400; }
+.cx-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.cx-chips button { padding: 3px 11px; font-size: 16px; color: var(--ink-2); background: rgba(255,252,240,.45); border: 1px solid var(--line); border-radius: 2px; }
+.cx-chips button small { font-size: 12px; color: var(--faint); } .cx-chips button.on { color: #fff2dc; background: #5a3a20; border-color: #5a3a20; } .cx-chips button.on small { color: #e8d4b0; }
+.cx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 8px; }
+.cx-card { display: flex; gap: 10px; padding: 8px 10px; background: rgba(255,252,240,.5); border: 1px solid var(--line); border-left: 4px solid var(--tc); border-radius: 2px; min-width: 0; }
+.cx-card > img { flex: none; width: 46px; height: 46px; padding: 5px; background: #1a110c; border-radius: 2px; }
+.cx-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cx-nm { font-family: var(--serif); font-size: 20px; line-height: 1.2; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cx-meta { font-size: 13px; color: var(--dim); } .cx-st { font-size: 14px; color: var(--ink); } .cx-d { font-size: 13px; color: var(--faint); }
+.cx-el { padding: 0 6px; font-family: var(--font); font-size: 12px; color: #1a120c; background: var(--ec); border-radius: 2px; }
+.cx-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+.cx-armor { display: inline-block; padding: 0 7px; font-size: 15px; color: #1a120c; background: var(--sc); border-radius: 2px; }
+.cx-foes img { width: 28px; height: auto; image-rendering: pixelated; } img.cx-mini { height: 26px; width: auto; vertical-align: middle; image-rendering: pixelated; }
+.cx-body-wrap table.rank td { vertical-align: middle; }
+
 /* share card window */
 .mcard.share { width: 560px; align-items: stretch; }
 .share-img { display: block; width: auto; max-width: 100%; height: 320px; max-height: 320px; margin: 0 auto; border: 2px solid #2a1a10; box-shadow: 0 6px 16px rgba(0,0,0,.35); }
@@ -299,7 +321,8 @@ table.mt td.x2 { color: #1a120c; background: var(--gold); }
 #prevCv { width: 100%; height: auto; aspect-ratio: 300 / 96; border: 3px solid #2a1a10; border-radius: 2px; background: #000; box-shadow: 0 4px 10px rgba(0,0,0,.35); }
 .dname { display: flex; align-items: baseline; gap: 14px; } .dname b { font-family: var(--brush); font-size: 54px; line-height: .9; font-weight: 400; } .dname span { color: var(--dim); font-size: 17px; }
 .reward { margin: 0; padding: 6px 10px; border: 1px solid var(--verm); color: var(--verm); font-size: 17px; border-radius: 2px; }
-.dview .btn.big { align-self: flex-end; margin-top: auto; }
+.dview .btn.big { margin-top: 0; }
+.sel-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: auto; }
 .perks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .perk { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: rgba(255,252,240,.4); border: 1px solid var(--line); border-radius: 2px; }
 .perk p { margin: 0; font-size: 17px; } .ph { display: flex; justify-content: space-between; } .ph b { font-family: var(--serif); font-weight: 400; font-size: 22px; } .ph .lv { color: var(--verm); }

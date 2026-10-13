@@ -149,7 +149,7 @@ function computeStats() {
     if (first) for (const e of [d.elem, d.elem2]) if (e) s.elemCount[e] = (s.elemCount[e] || 0) + 1;
   }
   s.dr = Math.min(0.6, s.dr);
-  for (const t of TYPE_IDS) { const n = s.typeCount[t] || 0, step = TYPE_SET_STEPS.filter(x => n >= x).length; s.typeStep[t] = step; if (step) s.typeDmg[t] += TYPE_SET_DMG[step - 1]; }
+  for (const t of TYPE_IDS) { const n = s.typeCount[t] || 0, step = setSteps(t).filter(x => n >= x).length; s.typeStep[t] = step; if (step) s.typeDmg[t] += TYPE_SET_DMG[step - 1]; }
   for (const e of ELEM_IDS) { const n = s.elemCount[e] || 0; s.elemStep[e] = ELEM_SET_STEPS.filter(x => n >= x).length; }
   s.chaosMin = s.typeStep.chaos >= 2 ? 0.9 : 0.5;
   return s;
@@ -1033,7 +1033,7 @@ function toggleFPanel(kind) {
 }
 function renderSets() {
   const S = R.S; let h = '<h3>세트 효과 <span class="dim">[B]</span></h3><p class="dim small" style="margin:0 0 8px">서로 다른 물건만 셉니다. 같은 물건을 겹쳐 사도 세트 단계는 오르지 않습니다.</p><div class="sets">';
-  for (const t of TYPE_IDS) { const n = S.typeCount[t] || 0, st = S.typeStep[t]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${TYPES[t].color}">${TYPES[t].set}</b> <span class="dim">서로 다른 ${TYPES[t].name} ${n}종</span><div class="steps">${TYPE_SET_STEPS.map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: +${pct(TYPE_SET_DMG[i])}</span>`).join('')}</div><div class="dim small">${TYPE_SET_PERK[t]}</div></div>`; }
+  for (const t of TYPE_IDS) { const n = S.typeCount[t] || 0, st = S.typeStep[t]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${TYPES[t].color}">${TYPES[t].set}</b> <span class="dim">서로 다른 ${TYPES[t].name} ${n}종</span><div class="steps">${setSteps(t).map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: +${pct(TYPE_SET_DMG[i])}</span>`).join('')}</div><div class="dim small">${TYPE_SET_PERK[t]}</div></div>`; }
   for (const e of ELEM_IDS) { const n = S.elemCount[e] || 0, st = S.elemStep[e]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${ELEMS[e].color}">${ELEMS[e].set}</b> <span class="dim">서로 다른 ${ELEMS[e].name} 물건 ${n}종</span><div class="steps">${ELEM_SET_STEPS.map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: ${ELEM_SET_TEXT[e][i]}</span>`).join('')}</div></div>`; }
   $('#fpanel').innerHTML = h + '</div>';
 }
@@ -1187,6 +1187,78 @@ async function submitRank() {
 }
 let lastRecAt = 0;
 
+// ───────────────────────── 도감 ─────────────────────────
+// Everything a player needs to plan a build, generated from data.js so it never drifts from the real game:
+// every item, how the shop rolls, what each round sends, and how sets count.
+let codexTab = 'items', codexFilter = 'all';
+const TIER_INK = ['#5d5a55', '#2f7a35', '#2d5fb0', '#b8601a'];
+const CODEX_TABS = [['items', '물건'], ['shop', '상점 확률'], ['rounds', '라운드와 적'], ['sets', '세트']];
+const CODEX_FILTERS = [['all', '전체'], ['blade', '창검'], ['arrow', '궁시'], ['charm', '부적'], ['cannon', '화포'], ['chaos', '요술'], ['upg', '강화'], ['eco', '경제'], ['surv', '생존'], ['thorn', '가시']];
+const pctTxt = v => (v >= 10 ? Math.round(v) : v >= 1 ? v.toFixed(1) : v.toFixed(2)).toString().replace(/\.0+$/, '') + '%';
+const elemChip = e => `<span class="cx-el" style="--ec:${ELEMS[e].color}">${ELEMS[e].name}</span>`;
+function codexStat(d) {
+  if (d.cat !== 'weapon') return d.desc || '';
+  const ex = [`피해 ${d.dmg}${d.shots ? `×${d.shots}발` : ''}`, `${d.cd}초마다`, `사거리 ${d.range}`];
+  if (d.splash) ex.push(`폭발 ${d.splash}`); if (d.pierce) ex.push(`관통 ${d.pierce}`); if (d.bounce) ex.push(`튕김 ${d.bounce}`);
+  if (d.multi) ex.push(`동시 ${d.multi}명`); if (d.chain) ex.push(`연쇄 ${d.chain}`); if (d.crit) ex.push(`치명타 +${pct(d.crit)}`);
+  if (d.stun) ex.push(`기절 ${d.stun}초`); if (d.execute) ex.push(`체력 ${pct(d.execute)} 이하 처치`); if (d.goldOnKill) ex.push(`처치 시 +${d.goldOnKill}냥`);
+  return ex.join(' · ');
+}
+function codexItems() {
+  const match = d => codexFilter === 'all' || (TYPE_IDS.includes(codexFilter) ? d.cat === 'weapon' && d.type === codexFilter : d.cat === codexFilter);
+  const list = ITEMS.filter(match).slice().sort((a, b) => a.tier - b.tier);
+  const chips = CODEX_FILTERS.map(([k, n]) => { const c = ITEMS.filter(d => k === 'all' || (TYPE_IDS.includes(k) ? d.cat === 'weapon' && d.type === k : d.cat === k)).length; return `<button class="${k === codexFilter ? 'on' : ''}" data-act="cx-filter" data-id="${k}">${n} <small>${c}</small></button>`; }).join('');
+  const intro = TYPE_IDS.includes(codexFilter) ? `<p class="cx-lead"><b style="color:${TYPES[codexFilter].color === '#dfe4ec' ? '#5b6070' : TYPES[codexFilter].color}">${TYPES[codexFilter].name}</b> ${TYPES[codexFilter].strong ? `무기는 <b>${ARMORS[TYPES[codexFilter].strong].name}</b>(${ARMORS[TYPES[codexFilter].strong].note})에게 피해 2배입니다.` : '무기는 상성 없이 0.5~2배 무작위 피해를 줍니다.'} 서로 다른 ${TYPES[codexFilter].name} 무기 ${setSteps(codexFilter).join('·')}종을 모으면 <b>${TYPES[codexFilter].set}</b> 세트가 켜집니다.</p>` : '';
+  const cards = list.map(d => {
+    const kind = d.cat === 'weapon' ? TYPES[d.type].name : d.type ? `${TYPES[d.type].name} 강화` : CATS[d.cat];
+    const els = [d.elem, d.elem2].filter(Boolean).map(elemChip).join('');
+    return `<div class="cx-card" style="--tc:${TIER_INK[d.tier]}"><img class="px" alt="" src="${iconFor(d)}"><div class="cx-body"><div class="cx-nm">${d.name}${els}</div><div class="cx-meta"><span style="color:${TIER_INK[d.tier]}">${TIERS[d.tier].name}</span> · ${kind} · ${fmt(TIERS[d.tier].price)}냥</div><div class="cx-st">${codexStat(d)}</div>${d.cat === 'weapon' && d.desc ? `<div class="cx-d">${d.desc}</div>` : ''}</div></div>`;
+  }).join('');
+  return `<div class="cx-chips">${chips}</div>${intro}<div class="cx-grid">${cards}</div>`;
+}
+function codexShop() {
+  const cats = Object.keys(CAT_WEIGHT), cw = cats.reduce((a, c) => a + CAT_WEIGHT[c], 0);
+  const bands = [[1, '1~5'], [6, '6~12'], [13, '13~20'], [21, '21~30'], [31, '31~40']];
+  const tierRows = bands.map(([r, label]) => { const w = tierWeights(r), sum = w.reduce((a, b) => a + b, 0); return `<tr><td>${label}</td>${w.map((x, i) => `<td class="r" style="color:${x ? TIER_INK[i] : '#b9a988'}">${pctTxt(x / sum * 100)}</td>`).join('')}</tr>`; }).join('');
+  const nIn = (cat, tier) => ITEMS.filter(d => d.cat === cat && d.tier === tier).length;
+  const ex = (cat, tier, r, label) => { const w = tierWeights(r), sum = w.reduce((a, b) => a + b, 0), p = CAT_WEIGHT[cat] / cw * (w[tier] / sum) / nIn(cat, tier); return `<tr><td>${label}</td><td class="r">${pctTxt(p * 100)}</td><td class="r">${pctTxt((1 - Math.pow(1 - p, 8)) * 100)}</td></tr>`; };
+  const anyLegend = r => { const w = tierWeights(r), sum = w.reduce((a, b) => a + b, 0); return pctTxt((1 - Math.pow(1 - w[3] / sum, 8)) * 100); };
+  return `<p class="cx-lead">상점 한 칸은 <b>분류 → 등급 → 그 안에서 같은 확률로 하나</b> 순서로 정해집니다. 8칸이 라운드마다 새로 깔립니다.</p>
+    <div class="cx-two"><div><h3>분류</h3><table class="rank"><tbody>${cats.map(c => `<tr><td>${CATS[c]}</td><td class="r">${pctTxt(CAT_WEIGHT[c] / cw * 100)}</td><td class="r dim">${ITEMS.filter(d => d.cat === c).length}개</td></tr>`).join('')}</tbody></table>
+      <h3>값</h3><table class="rank"><tbody>${TIERS.map((t, i) => `<tr><td style="color:${TIER_INK[i]}">${t.name}</td><td class="r">${fmt(t.price)}냥</td><td class="r dim">되팔면 ${Math.round((BASE.sellRate + perkL('sell') * 0.1) * 100)}%</td></tr>`).join('')}</tbody></table></div>
+    <div><h3>라운드별 등급 확률${perkL('luck') ? ` <small class="dim">(눈썰미 ${perkL('luck')}단계 적용)</small>` : ''}</h3><table class="rank"><thead><tr><th>라운드</th>${TIERS.map((t, i) => `<th class="r" style="color:${TIER_INK[i]}">${t.name}</th>`).join('')}</tr></thead><tbody>${tierRows}</tbody></table>
+      <h3>예시</h3><table class="rank"><thead><tr><th>이런 물건이</th><th class="r">한 칸에</th><th class="r">상점 한 번에</th></tr></thead><tbody>${ex('weapon', 0, 1, '1~5라운드 · 특정 일반 무기')}${ex('weapon', 2, 13, '13~20라운드 · 특정 희귀 무기')}${ex('weapon', 3, 31, '31라운드~ · 특정 전설 무기')}<tr><td>31라운드~ · 전설이 하나라도</td><td class="r">-</td><td class="r">${anyLegend(31)}</td></tr></tbody></table></div></div>
+    <ul class="rules"><li>새로고침은 라운드마다 무료 ${BASE.freeRerolls + perkL('reroll')}번, 그다음은 (15 + 라운드×4)냥부터 할 때마다 50%씩 비싸집니다.</li><li>수호 기억 <b>눈썰미</b>는 희귀·전설이 뜨는 비율을 단계마다 15%씩 올립니다.</li><li>같은 물건을 또 사면 봇짐 한 칸에 ×2, ×3으로 겹칩니다. 봇짐 24칸은 물건 종류 수로 셉니다.</li></ul>`;
+}
+function codexRounds() {
+  const foes = ['runner', 'wolf', 'wisp', 'grunt', 'bandit', 'guard', 'gangsi', 'hareubang', 'giant'];
+  const sprite = k => SPRITES[FOES[k].spr].frames[0].toDataURL();
+  const armorCell = a => `<span class="cx-armor" style="--sc:${ARMORS[a].color}">${ARMORS[a].name}</span>`;
+  const weakTo = a => TYPE_IDS.filter(t => TYPES[t].strong === a).map(t => TYPES[t].name).join('');
+  const bosses = [[10, 'chief', '도깨비 졸개를 불러냅니다'], [20, 'bulga', '철갑 무사를 불러내고, 때릴 때마다 체력을 회복합니다'], [30, 'gumiho', '도깨비불을 불러내고 멀리서 공격합니다'], [41, 'dragon', '바위 거인을 불러냅니다. 체력이 20% 줄 때마다 비늘 갑옷이 바뀝니다']];
+  return `<p class="cx-lead">한 라운드는 ${ROUND_TIME}초, 모두 ${ROUNDS}라운드입니다. 라운드마다 <b>주력 갑옷</b> 하나가 정해지고 적의 70%가 그 갑옷입니다. 화면 위 <b>이번 주력 · 다음 주력</b>을 보고 무기를 고르세요.</p>
+    <div class="cx-two"><div><h3>라운드별 갑옷</h3><table class="rank"><tbody><tr><td>1~3</td><td>${armorCell('light')} ${armorCell('medium')}</td></tr><tr><td>4~7</td><td>+ ${armorCell('heavy')}</td></tr><tr><td>8~40</td><td>+ ${armorCell('fort')}</td></tr></tbody></table>
+      <h3>갑옷과 약점</h3><table class="rank"><tbody>${ARMOR_IDS.map(a => `<tr><td>${armorCell(a)}</td><td>${weakTo(a)}에 2배</td><td class="dim">${ARMORS[a].note}</td></tr>`).join('')}</tbody></table>
+      <h3>강해지는 정도</h3><ul class="rules"><li>적 수: 1라운드 약 ${Math.round(10.7)}마리 → 20라운드 ${Math.round(24)} → 40라운드 ${Math.round(38)} (보통)</li><li>체력: 라운드마다 ×1.15 (20라운드는 1라운드의 약 ${Math.round(Math.pow(1.15, 19))}배)</li><li>공격력 +6%, 현상금 +5% / 라운드</li></ul></div>
+    <div><h3>적</h3><table class="rank cx-foes"><thead><tr><th></th><th>이름</th><th>갑옷</th><th class="r">체력</th><th class="r">빠르기</th></tr></thead><tbody>${foes.map(k => `<tr><td><img class="px" alt="" src="${sprite(k)}"></td><td>${FOES[k].name}</td><td>${armorCell(FOES[k].armor)}</td><td class="r">${FOES[k].hp}</td><td class="r">${FOES[k].spd}</td></tr>`).join('')}</tbody></table><p class="dim small">체력은 1라운드 보통 난이도 기준입니다.</p></div></div>
+    <h3>특별한 라운드</h3><table class="rank"><tbody><tr><td>${TREASURE_ROUNDS.join(' · ')}</td><td><img class="px cx-mini" alt="" src="${sprite('treasure')}"> <b>보물 도깨비</b>: 잡으면 선물 셋 중 하나를 고릅니다. 24초 뒤 달아납니다.</td></tr>${bosses.map(([r, k, t]) => `<tr><td>${r > ROUNDS ? '40 뒤' : r}</td><td><img class="px cx-mini" alt="" src="${sprite(k)}"> <b>${FOES[k].name}</b>${FOES[k].armor === 'cycle' ? '' : ` ${armorCell(FOES[k].armor)}`}: ${t}</td></tr>`).join('')}</tbody></table>`;
+}
+function codexSets() {
+  const distinct = t => ITEMS.filter(d => d.cat === 'weapon' && d.type === t).length;
+  const elemN = e => ITEMS.filter(d => d.elem === e || d.elem2 === e).length;
+  const note = (have, need) => (have < need ? `<span class="bad">게임에 ${have}종뿐이라 ${need}종 단계는 아직 켤 수 없습니다</span>` : `게임에 ${have}종`);
+  return `<p class="cx-lead">세트는 <b>서로 다른 물건</b>만 셉니다. 같은 물건을 겹쳐 사면 화력은 늘지만 세트 단계는 오르지 않습니다. 전투 중 <b>B</b> 키로 지금 켜진 세트를 볼 수 있습니다.</p>
+    <h3>무기 종류 세트 <small class="dim">단계마다 그 종류 피해 +${TYPE_SET_DMG.map(v => pct(v)).join(' / +')}</small></h3>
+    <table class="rank"><tbody>${TYPE_IDS.map(t => `<tr><td><b>${TYPES[t].set}</b></td><td>${TYPES[t].name}</td><td>${setSteps(t).join(' · ')}종</td><td>${TYPE_SET_PERK[t]}</td><td class="r dim">${note(distinct(t), setSteps(t)[setSteps(t).length - 1])}</td></tr>`).join('')}</tbody></table>
+    <h3>속성 세트 <small class="dim">2 · 4종 (무기·강화·가시 모두 셈)</small></h3>
+    <table class="rank"><tbody>${ELEM_IDS.map(e => `<tr><td><b>${ELEMS[e].set}</b></td><td>${elemChip(e)}</td><td>2종: ${ELEM_SET_TEXT[e][0]}<br>4종: ${ELEM_SET_TEXT[e][1]}</td><td class="r dim">${note(elemN(e), ELEM_SET_STEPS[ELEM_SET_STEPS.length - 1])}</td></tr>`).join('')}</tbody></table>
+    <p class="dim small">속성 물건: ${ELEM_IDS.map(e => `${ELEMS[e].name} — ${ITEMS.filter(d => d.elem === e || d.elem2 === e).map(d => d.name).join(', ')}`).join(' / ')}</p>`;
+}
+function renderCodex() {
+  const body = codexTab === 'shop' ? codexShop() : codexTab === 'rounds' ? codexRounds() : codexTab === 'sets' ? codexSets() : codexItems();
+  $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('도감')}<div class="cx-tabs">${CODEX_TABS.map(([k, n]) => `<button class="${k === codexTab ? 'on' : ''}" data-act="cx-tab" data-id="${k}">${n}</button>`).join('')}</div><div class="cx-body-wrap">${body}</div></div>`;
+}
+
 // ───────────────────────── menu screens ─────────────────────────
 let menuView = 'title', selDiff = 'normal', hallView = 'online';
 function showMenu(view = 'title') {
@@ -1199,6 +1271,7 @@ function showMenu(view = 'title') {
         <button class="mbtn main" data-act="go-select" data-focus>출정하기</button>
         <button class="mbtn" data-act="go-rank">주간 랭킹전 <span class="badge">${triesLeft()}/${RANK_TRIES}</span></button>
         <button class="mbtn" data-act="perks">수호 기억 <span class="badge gold">${fmt(P.shards)}</span></button>
+        <button class="mbtn" data-act="codex">도감 <span class="badge">${ITEMS.length}</span></button>
         <button class="mbtn" data-act="hall">명예의 전당</button>
         <button class="mbtn" data-act="settings">설정</button>
       </nav></div>
@@ -1210,6 +1283,7 @@ function showMenu(view = 'title') {
   else if (view === 'hall') renderHall();
   else if (view === 'rank') renderRankMenu();
   else if (view === 'settings') renderSettings();
+  else if (view === 'codex') renderCodex();
   const f = $('#menuBody [data-focus]') || $('#menuBody button'); if (f) f.focus({ preventScroll: true });
 }
 function panelHead(title) { return `<header class="phead"><h2>${title}</h2><button class="btn" data-act="go-title">닫기 [Esc]</button></header>`; }
@@ -1221,7 +1295,7 @@ function renderSelect() {
     <div class="dview"><canvas id="prevCv" width="300" height="96"></canvas><div class="dname"><b>${d.name}</b><span>${best ? (best > ROUNDS ? '승리 기록 있음' : `최고 ${best} 라운드`) : '아직 도전 기록 없음'}</span></div>
       <ul class="rules">${d.note.map(n => `<li>${n}</li>`).join('')}<li>적 체력 ×${d.hp} · 수 ×${d.count} · 보스 체력 ×${d.boss}</li><li>40라운드를 버티면 최종 보스 ${boss}가 깨어납니다</li></ul>
       <p class="reward">보상 · 버틴 라운드마다 기억 조각 ${d.mem} · 승리 시 +${Math.round(25 * d.mem)}</p>
-      <button class="btn primary big" data-act="start" data-focus>▶ 시작 [Enter]</button></div></div></div>`;
+      <div class="sel-actions"><button class="btn big" data-act="codex">도감 보기</button><button class="btn primary big" data-act="start" data-focus>▶ 시작 [Enter]</button></div></div></div></div>`;
   drawPreview(d);
 }
 // A lit slice of the difficulty's battlefield: the beacon in the middle, the final boss lurking at the edge.
@@ -1346,6 +1420,9 @@ document.addEventListener('click', ev => {
     case 'go-rank': showMenu('rank'); break;
     case 'perks': showMenu('perks'); break;
     case 'hall': showMenu('hall'); break;
+    case 'codex': showMenu('codex'); break;
+    case 'cx-tab': codexTab = id; renderCodex(); break;
+    case 'cx-filter': codexFilter = id; renderCodex(); break;
     case 'settings': showMenu('settings'); break;
     case 'diff': selDiff = id; renderSelect(); $(`[data-act="diff"][data-id="${id}"]`)?.focus(); break;
     case 'start': if (unlocked(DIFF[selDiff])) startRun(selDiff, false); break;
