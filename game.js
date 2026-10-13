@@ -705,7 +705,7 @@ function runScore() {
 function finishRun() {
   const d = R.diff, cleared = roundsCleared(), won = R.state === 'won';
   const shards = Math.floor(cleared * d.mem) + (won ? Math.round(25 * d.mem) : 0);
-  P.shards += shards; P.runs++;
+  P.shards += shards; P.runs++; Cloud.play(won ? 'win' : 'end');
   P.best[d.id] = Math.max(P.best[d.id] || 0, won ? ROUNDS + 1 : R.round);
   if (won) { P.wins[d.id] = (P.wins[d.id] || 0) + 1; Cloud.claimFirst(d.id); if (d.id === 'nm3' && !P.netherAt) P.netherAt = Math.round(P.playSec); }
   let rec = null;
@@ -1523,6 +1523,7 @@ function renderSettings() {
 }
 function startRun(diffId, ranked) {
   if (ranked) { if (triesLeft() <= 0) return; if (P.ranked.day !== rankDayId()) P.ranked = { day: rankDayId(), used: 0 }; P.ranked.used++; persist(); }
+  Cloud.play('start'); if (ranked) Cloud.play('ranked');
   closeModal(); newRun(diffId, ranked); mode = 'run'; paused = false; speed = 1; fpanel = null; invFilter = 'all'; selected = null; hideTip();
   $('#menu').hidden = true; $('#fpanel').hidden = true; for (const b of $$('[data-act="fp"]')) b.classList.remove('on');
   renderShop(); renderInv(); renderHud(true); Sfx.ensure();
@@ -1700,14 +1701,22 @@ const Cloud = {
     else if (P.savedAt > 0) this.flush(); else this.lastSync = s.at;
   },
   visits: null,
+  // A visit is counted only after the first real tap, click or key press, so crawlers and link previews that
+  // merely load the page are left out; automated browsers (navigator.webdriver) never count.
   async countVisit() {
+    const r = await this.call('GET', '/visit'); if (r.ok) this.showVisits(r);
     let sent = ''; try { sent = localStorage.getItem('bonghwa-visit') || ''; } catch (e) { /* storage unavailable */ }
-    const fresh = sent !== dayId(), r = await this.call(fresh ? 'POST' : 'GET', '/visit');
-    if (!r.ok) return;
-    if (fresh) try { localStorage.setItem('bonghwa-visit', dayId()); } catch (e) { /* storage unavailable */ }
-    this.visits = { total: r.total, today: r.today };
-    const el = $('#visits'); if (el) el.innerHTML = visitHtml();
+    if (sent === dayId() || navigator.webdriver) return;
+    const go = async () => {
+      for (const t of ['pointerdown', 'keydown']) removeEventListener(t, go, true);
+      const p = await this.call('POST', '/visit'); if (!p.ok) return;
+      try { localStorage.setItem('bonghwa-visit', dayId()); } catch (e) { /* storage unavailable */ }
+      this.showVisits(p);
+    };
+    for (const t of ['pointerdown', 'keydown']) addEventListener(t, go, true);
   },
+  showVisits(r) { this.visits = { total: r.total, today: r.today }; const el = $('#visits'); if (el) el.innerHTML = visitHtml(); },
+  play(kind) { if (this.api && !navigator.webdriver) this.call('POST', '/play', { kind }); },
   // 첫 봉화 완주: diff id → { id, at }
   firsts: null,
   async loadFirsts() {
