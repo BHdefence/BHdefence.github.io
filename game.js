@@ -1060,15 +1060,112 @@ function setPaused(v) {
   renderHud(true);
 }
 function showResult(res) {
+  lastRes = res;
   const won = R.state === 'won', d = R.diff, cleared = roundsCleared(), canOnline = R.ranked && Cloud.online && !Cloud.api, autoOnline = R.ranked && Cloud.api && !!Cloud.acct && !!res.rec;
   openModal(`<div class="eyebrow ${won ? 'gold' : 'bad'}">${d.name}${R.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}</div><h2>${won ? '봉화를 끝까지 지켰습니다' : R.round === 0 ? '출정 전에 물러났습니다' : `${R.round} 라운드에서 봉화가 꺼졌습니다`}</h2>
     <dl class="facts"><dt>버틴 라운드</dt><dd>${cleared} / ${ROUNDS}${won ? ' + 흑룡' : ''}</dd><dt>처치</dt><dd>${fmt(R.kills)}</dd><dt>시간</dt><dd>${Math.floor(R.time / 60)}분 ${Math.floor(R.time % 60)}초</dd><dt>기억 조각</dt><dd class="gold">+${res.shards}</dd>${res.rec ? `<dt>랭킹 점수</dt><dd class="gold big">${fmt(res.rec.score)}</dd>` : ''}</dl>
     ${won && d.id === 'hard' && P.wins.hard === 1 ? '<p class="gold">악몽 I이 열렸습니다</p>' : ''}${won && d.id === 'nm1' && P.wins.nm1 === 1 ? '<p class="gold">악몽 II가 열렸습니다</p>' : ''}${won && d.id === 'nm2' && P.wins.nm2 === 1 ? '<p class="gold">악몽 III이 열렸습니다</p>' : ''}
     ${canOnline ? `<div class="submit"><input id="nickIn" maxlength="12" placeholder="닉네임" aria-label="닉네임" autocomplete="off"><button class="btn primary" data-act="submit">온라인 랭킹 등록</button></div><p class="dim small" id="submitNote">이 기기 기록에는 자동으로 남겼습니다. 온라인에는 한 사람당 이번 주 최고 기록 하나가 올라갑니다.</p>` : autoOnline ? `<p class="small" id="submitNote">명예의 전당에 <b>${Cloud.acct.id}</b>(으)로 올리는 중입니다…</p>` : R.ranked ? `<p class="dim small">이 기기 랭킹에 기록했습니다.${Cloud.api ? ' 로그인하면 명예의 전당에 올라갑니다.' : ''}</p>` : ''}
+    ${R.round > 0 ? '<button class="btn share-btn" data-act="share">기록 공유 · 자랑하기</button>' : ''}
     <div class="actions"><button class="btn" data-act="menu">메뉴로</button>${R.ranked ? '<button class="btn" data-act="hall">명예의 전당</button>' : '<button class="btn" data-act="perks">수호 기억</button>'}${R.ranked ? (triesLeft() > 0 ? '<button class="btn primary" data-act="rankStart" data-focus>다시 도전</button>' : '') : `<button class="btn primary" data-act="again" data-focus>다시 하기</button>`}</div>`, won ? 'win' : 'lose');
   const ni = $('#nickIn'); if (ni) ni.value = P.nick;
-  if (autoOnline) autoSubmit(res.rec);
+  if (autoOnline && !res.sent) { res.sent = true; autoSubmit(res.rec); }
 }
+// ───────────────────────── 기록 공유 카드 ─────────────────────────
+// After a run, the result can be shared as a 1080×1350 picture: the night ridge and the 봉수대 as it stood at the end
+// (its lit fires = remaining health), a hanji scroll with the record, the three weapons that dealt the most, and the link.
+const SITE_URL = 'https://bhdefence.github.io/';
+let lastRes = null, shareBlob = null, shareUrl = '';
+function runSummary() {
+  const won = R.state === 'won', byId = new Map();
+  for (const w of R.weapons) byId.set(w.id, (byId.get(w.id) || 0) + w.dealt);
+  const total = [...byId.values()].reduce((a, b) => a + b, 0) || 1;
+  const top = [...byId].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, d]) => ({ id, share: d / total, n: R.items.filter(i => i.id === id).length }));
+  const sets = TYPE_IDS.filter(t => R.S.typeStep[t]).map(t => `${TYPES[t].set} ${R.S.typeStep[t]}단계`).concat(ELEM_IDS.filter(e => R.S.elemStep[e]).map(e => `${ELEMS[e].set} ${R.S.elemStep[e]}단계`));
+  return { won, round: R.round, cleared: roundsCleared(), diff: R.diff.name, ranked: R.ranked, kills: R.kills, time: R.time, hp: won ? clamp(R.hp / R.S.maxHp, 0, 1) : 0, score: lastRes && lastRes.rec ? lastRes.rec.score : null, top, sets, who: Cloud.acct ? Cloud.acct.id : P.nick || '' };
+}
+function shareText(s) {
+  const what = s.won ? `${s.diff} 난이도에서 흑룡까지 쓰러뜨리고 봉화를 지켰다!` : s.round === 0 ? '봉화대 사수에 출정했다' : `${s.diff} 난이도 ${s.round}라운드까지 봉화를 지켰다`;
+  return `봉화대 사수 · ${what}${s.score ? ` (랭킹 ${fmt(s.score)}점)` : ''}\n너도 지켜 봐: ${SITE_URL}`;
+}
+async function paintShareCard(s) {
+  // Web fonts arrive in per-character slices, so ask for exactly the characters this card uses.
+  const brushText = '봉화대 사수 흑룡 토벌! 0123456789 라운드', serifText = '다섯 홰의 불이 꺼지기 전에 봉화를 끝까지 지켰다 봉수';
+  try { await Promise.all([document.fonts.load('130px "East Sea Dokdo"', brushText), document.fonts.load('40px "Song Myung"', serifText), document.fonts.load('30px Galmuri11')]); } catch (e) { /* fall back to whatever is loaded */ }
+  const W = 1080, H = 1350, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+  // night ridge and the beacon, painted at 1/4 size then scaled up for crisp pixels
+  const sky = paintTitle(270); x.drawImage(sky, 0, 0, 270, 338, 0, 0, W, H);
+  const t = document.createElement('canvas'); t.width = 80; t.height = 72; const tg = t.getContext('2d');
+  tg.translate(36 - CX, 64 - CY - 10); drawTower(tg, 0.4, s.hp, 'field');
+  const glow = (gx, gy, r, a) => { const gr = x.createRadialGradient(gx, gy, 0, gx, gy, r); gr.addColorStop(0, `rgba(255,150,60,${a})`); gr.addColorStop(1, 'rgba(255,150,60,0)'); x.fillStyle = gr; x.fillRect(gx - r, gy - r, r * 2, r * 2); };
+  x.globalCompositeOperation = 'lighter'; glow(800, 360, 300, s.hp > 0 ? 0.45 : 0.12); x.globalCompositeOperation = 'source-over';
+  x.drawImage(t, 800 - 144, 610 - 256, 320, 288);
+  for (let i = 0; i < 60; i++) { const ex = 700 + Math.random() * 220, ey = 120 + Math.random() * 260; x.fillStyle = i % 3 ? '#f3a33a' : '#fff2a8'; x.fillRect(ex | 0, ey | 0, 4, 4); }
+  // title
+  x.textBaseline = 'alphabetic'; x.shadowColor = 'rgba(255,150,60,.5)'; x.shadowBlur = 24;
+  x.fillStyle = '#f7ecd2'; x.font = '150px "East Sea Dokdo", Galmuri11'; x.fillText('봉화대 사수', 64, 200);
+  x.shadowBlur = 0; x.fillStyle = '#f0c560'; x.font = '34px "Song Myung", serif'; x.fillText('다섯 홰의 불이 꺼지기 전에', 70, 262);
+  // hanji scroll
+  const px0 = 54, py0 = 640, pw = W - 108, ph = 630;
+  const pg = x.createRadialGradient(W / 2, py0 + 200, 50, W / 2, py0 + 300, 700); pg.addColorStop(0, '#f4ead2'); pg.addColorStop(0.6, '#efe4c9'); pg.addColorStop(1, '#ddcba3');
+  x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(px0 + 10, py0 + 16, pw, ph);
+  x.fillStyle = pg; x.fillRect(px0, py0, pw, ph);
+  for (const ry of [py0 - 10, py0 + ph - 8]) { const rg = x.createLinearGradient(0, ry, 0, ry + 20); rg.addColorStop(0, '#2a180d'); rg.addColorStop(0.45, '#b07a48'); rg.addColorStop(1, '#2a180d'); x.fillStyle = rg; x.fillRect(px0 - 16, ry, pw + 32, 20); }
+  const L = px0 + 50;
+  x.fillStyle = '#6d5a45'; x.font = '30px Galmuri11'; x.fillText(`${s.diff}${s.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}`, L, py0 + 70);
+  x.fillStyle = s.won ? '#a8321f' : '#241a13'; x.font = '120px "East Sea Dokdo", Galmuri11';
+  const head = s.won ? '흑룡 토벌!' : `${s.round} 라운드`, hw = x.measureText(head).width;
+  x.fillText(head, L, py0 + 190);
+  x.fillStyle = '#5b4a39'; x.font = '36px "Song Myung", serif';
+  x.fillText(s.won ? '봉화를 끝까지 지켰다' : '까지 봉화를 지켰다', L + hw + 22, py0 + 186);
+  // stats row
+  const stats = [['버틴 라운드', `${s.cleared} / ${ROUNDS}`], ['처치', fmt(s.kills)], ['시간', `${Math.floor(s.time / 60)}분 ${Math.floor(s.time % 60)}초`]].concat(s.score ? [['랭킹 점수', fmt(s.score)]] : []);
+  const cw = (pw - 100) / stats.length;
+  stats.forEach(([k, v], i) => { const sx = L + i * cw; x.fillStyle = '#8a7458'; x.font = '26px Galmuri11'; x.fillText(k, sx, py0 + 305); x.fillStyle = k === '랭킹 점수' ? '#a8321f' : '#241a13'; x.font = '42px Galmuri11'; x.fillText(v, sx, py0 + 355); });
+  x.fillStyle = '#c8b38a'; x.fillRect(L, py0 + 385, pw - 100, 2);
+  // main weapons
+  x.fillStyle = '#6d5a45'; x.font = '28px Galmuri11'; x.fillText('주력 무기', L, py0 + 432);
+  if (!s.top.length) { x.fillStyle = '#8a7458'; x.fillText('무기 없이 버텼다', L, py0 + 490); }
+  s.top.forEach((w, i) => {
+    const d = ITEM[w.id], ix = L + i * ((pw - 100) / 3), iy = py0 + 452;
+    x.fillStyle = '#1a110c'; x.fillRect(ix, iy, 84, 84);
+    x.drawImage(bakeMap(ICONS[d.icon] || ICONS.up, { a: TYPES[d.type].color, z: d.elem ? ELEMS[d.elem].color : '#fff' }, 6), ix + 6, iy + 6);
+    x.fillStyle = '#241a13'; x.font = '30px Galmuri11'; x.fillText(d.name + (w.n > 1 ? ` ×${w.n}` : ''), ix + 98, iy + 36);
+    x.fillStyle = '#8a7458'; x.font = '24px Galmuri11'; x.fillText(`${TYPES[d.type].name} · 피해 ${Math.round(w.share * 100)}%`, ix + 98, iy + 72);
+  });
+  if (s.sets.length) { x.fillStyle = '#5b4a39'; x.font = '26px Galmuri11'; x.fillText('세트  ' + s.sets.slice(0, 3).join(' · '), L, py0 + 585); }
+  // footer: who, when, where, seal
+  const day = kstNow().toISOString().slice(0, 10).replace(/-/g, '.');
+  x.fillStyle = 'rgba(239,228,201,.85)'; x.font = '30px Galmuri11';
+  x.fillText(`${s.who ? s.who + ' · ' : ''}${day}`, 64, H - 34);
+  x.textAlign = 'right'; x.fillStyle = '#f0c560'; x.fillText('bhdefence.github.io', W - 150, H - 34); x.textAlign = 'left';
+  x.save(); x.translate(W - 92, H - 92); x.rotate(0.12); x.fillStyle = '#b8321f'; x.fillRect(-40, -52, 80, 104); x.strokeStyle = 'rgba(255,235,210,.4)'; x.lineWidth = 4; x.strokeRect(-34, -46, 68, 92);
+  x.fillStyle = '#fff0de'; x.font = '38px "Song Myung", serif'; x.textAlign = 'center'; x.fillText('봉', 0, -6); x.fillText('수', 0, 38); x.restore();
+  return c;
+}
+async function openShare() {
+  if (!R) return;
+  const s = runSummary();
+  openModal('<h2>기록 공유</h2><p class="dim">기록 그림을 만드는 중입니다…</p>', 'share');
+  const cv = await paintShareCard(s);
+  shareBlob = await new Promise(r => cv.toBlob(r, 'image/png'));
+  if (shareUrl) URL.revokeObjectURL(shareUrl);
+  shareUrl = URL.createObjectURL(shareBlob);
+  const canFile = !!(navigator.canShare && navigator.canShare({ files: [new File([shareBlob], 'bonghwa.png', { type: 'image/png' })] }));
+  openModal(`<h2>기록 공유</h2><img class="share-img" src="${shareUrl}" alt="내 기록 그림"><div class="actions">${canFile ? '<button class="btn primary" data-act="share-send" data-focus>카톡·앱으로 보내기</button>' : ''}<a class="btn${canFile ? '' : ' primary'}" href="${shareUrl}" download="봉화대사수-기록.png">이미지 저장</a><button class="btn" data-act="share-copy">자랑 글 복사</button></div><p class="dim small" id="shareNote">이미지를 저장해 카톡이나 커뮤니티에 올리고, 자랑 글을 함께 붙여 넣으세요.</p><div class="actions"><button class="btn" data-act="share-back">← 결과로</button></div>`, 'share');
+}
+async function shareSend() {
+  const s = runSummary(), note = $('#shareNote');
+  try { await navigator.share({ files: [new File([shareBlob], '봉화대사수-기록.png', { type: 'image/png' })], text: shareText(s), title: '봉화대 사수' }); }
+  catch (e) { if (note && e && e.name !== 'AbortError') note.textContent = '보내기를 열지 못했습니다. 이미지 저장 후 직접 올려 주세요.'; }
+}
+async function shareCopy(btn) {
+  const t = shareText(runSummary()), note = $('#shareNote');
+  try { await navigator.clipboard.writeText(t); btn.textContent = '복사됨 ✓'; }
+  catch (e) { if (note) note.textContent = t; }
+}
+
 // Signed-in players' ranked runs go to the Hall of Fame on their own, under their account id.
 async function autoSubmit(rec) {
   rec.nick = Cloud.acct.id; persist();
@@ -1232,6 +1329,10 @@ document.addEventListener('click', ev => {
     case 'restart': closeModal(); startRun(R.diff.id, false); break;
     case 'quit': closeModal(); paused = false; if (R.state === 'run') { R.state = 'lost'; const res = finishRun(); showResult(res); } break;
     case 'again': startRun(R.diff.id, false); break;
+    case 'share': openShare(); break;
+    case 'share-send': shareSend(); break;
+    case 'share-copy': shareCopy(el); break;
+    case 'share-back': if (lastRes) showResult(lastRes); break;
     case 'menu': showMenu('title'); break;
     case 'gift': takeGift(+id); break;
     case 'tutDone': P.tutorial = true; persist(); paused = false; closeModal(); break;
