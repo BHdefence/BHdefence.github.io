@@ -176,7 +176,7 @@ export default {
         const b = await body(req), week = weekId();
         if (b.week !== week) return fail(req, 400, 'week', '이번 주 랭킹전 기록만 올릴 수 있습니다.');
         const round = int(b.round, 0, 41), kills = int(b.kills, 0, 200000), win = !!b.win;
-        const score = int(b.score, 0, 41 * 1000 + kills * 3 + 35000);
+        const score = int(b.score, 0, win ? 75999 : Math.min(40999, round * 1000 + 999)); // matches the game's runScore()
         const cur = await env.DB.prepare('SELECT score FROM rank WHERE user_id = ? AND week = ?').bind(uid, week).first();
         if (cur && cur.score >= score) return json(req, { ok: true, kept: true, prev: cur.score });
         await env.DB.prepare('INSERT OR REPLACE INTO rank (user_id, week, score, round, win, kills, at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(uid, week, score, round, win ? 1 : 0, kills, Date.now()).run();

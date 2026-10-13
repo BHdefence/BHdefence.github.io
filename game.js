@@ -39,6 +39,9 @@ function loadProfile() { try { const raw = localStorage.getItem(SAVE_KEY); if (r
 function persist() { P.savedAt = Date.now(); try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } Cloud.queue(); }
 let P = loadProfile();
 const perkL = id => P.perks[id] || 0;
+// In weekly ranked runs everyone starts from the same line: 수호 기억 is switched off for the run itself.
+let noPerks = false;
+const perkRun = id => (noPerks ? 0 : perkL(id));
 const unlocked = d => !d.req || (P.wins[d.req] || 0) > 0;
 
 // Weekly ranking runs share one seed per ISO week (Korean time), so everyone sees the same shops and waves.
@@ -191,12 +194,12 @@ let R = null, mode = 'menu', paused = false, speed = 1, uidSeq = 0, eidSeq = 0;
 const rngFor = (...parts) => mulberry32(hashStr(R.seed + ':' + parts.join(':')));
 
 function newRun(diffId, ranked) {
-  const d = DIFF[diffId];
+  const d = DIFF[diffId]; noPerks = !!ranked;
   R = {
     diff: d, ranked: !!ranked, seed: ranked ? 'week:' + weekId() : 'run:' + Date.now() + ':' + ((Math.random() * 1e9) | 0),
-    round: 0, t: PREP_TIME, elapsed: 0, time: 0, gold: BASE.gold + perkL('gold') * 60, hp: 0, shieldNow: 0,
+    round: 0, t: PREP_TIME, elapsed: 0, time: 0, gold: BASE.gold + perkRun('gold') * 60, hp: 0, shieldNow: 0,
     items: [], weapons: [], enemies: [], shots: [], fx: [], nums: [], spawnQ: [], shop: [],
-    kills: 0, smites: BASE.smites + perkL('smite'), freeRerolls: 0, paidRerolls: 0, rerollIdx: 0, halfOff: false, bonusDmg: 0,
+    kills: 0, smites: BASE.smites + perkRun('smite'), freeRerolls: 0, paidRerolls: 0, rerollIdx: 0, halfOff: false, bonusDmg: 0,
     state: 'run', final: false, gift: null, showRange: false, banner: null, shake: 0, flash: 0, thornDealt: 0,
     armorSeq: [],
   };
@@ -219,11 +222,11 @@ const hpMul = r => Math.pow(1.15, Math.max(0, r - 1)) * R.diff.hp;
 
 function computeStats() {
   const s = {
-    dmg: perkL('might') * 0.03 + R.bonusDmg, typeDmg: { blade: 0, arrow: 0, charm: 0, cannon: 0, chaos: 0 }, aspd: 0, range: 0,
+    dmg: perkRun('might') * 0.03 + R.bonusDmg, typeDmg: { blade: 0, arrow: 0, charm: 0, cannon: 0, chaos: 0 }, aspd: 0, range: 0,
     crit: BASE.crit, critMul: BASE.critMul, elemPow: { fire: 0, frost: 0, poison: 0, bolt: 0 },
-    income: (BASE.income + perkL('income') * 0.6) * R.diff.income, bounty: 0, interest: 0, interestCap: 0,
-    maxHp: Math.round(BASE.hp * (1 + perkL('hp') * 0.06)), regen: BASE.regen, shield: 0, dr: 0, thorn: 0, thornPow: 0,
-    freeRerolls: BASE.freeRerolls + perkL('reroll'), typeCount: {}, elemCount: {}, typeStep: {}, elemStep: {}, thornElems: [],
+    income: (BASE.income + perkRun('income') * 0.6) * R.diff.income, bounty: 0, interest: 0, interestCap: 0,
+    maxHp: Math.round(BASE.hp * (1 + perkRun('hp') * 0.06)), regen: BASE.regen, shield: 0, dr: 0, thorn: 0, thornPow: 0,
+    freeRerolls: BASE.freeRerolls + perkRun('reroll'), typeCount: {}, elemCount: {}, typeStep: {}, elemStep: {}, thornElems: [],
   };
   // Sets count DIFFERENT items: stacking copies of one weapon (×2, ×3) adds its firepower but not set progress.
   const counted = new Set();
@@ -279,7 +282,7 @@ function genSpawns(r) {
   return q.sort((a, b) => a.t - b.t);
 }
 function startFinal() {
-  R.final = true; R.round = ROUNDS + 1; R.t = Infinity; R.shieldNow = R.S.shield;
+  R.final = true; R.round = ROUNDS + 1; R.t = Infinity; R.shieldNow = R.S.shield; R.finalAt = R.time;
   spawnFoe('dragon', 0, 0.5);
   banner('최종 결전', '흑룡이 깨어났습니다', 'boss', '결전'); Sfx.play('boss'); bumpField(); renderHud(true);
 }
@@ -305,7 +308,7 @@ function spawnFoe(kind, side, along, at) {
 // ───────────────────────── shop ─────────────────────────
 function tierWeights(r) {
   const w = r <= 5 ? [80, 20, 0, 0] : r <= 12 ? [55, 35, 10, 0] : r <= 20 ? [32, 40, 23, 5] : r <= 30 ? [16, 36, 34, 14] : [6, 26, 40, 28];
-  const luck = 1 + perkL('luck') * 0.15; return [w[0], w[1], w[2] * luck, w[3] * luck];
+  const luck = 1 + perkRun('luck') * 0.15; return [w[0], w[1], w[2] * luck, w[3] * luck];
 }
 function wpick(rng, weights) { let t = 0; for (const w of weights) t += w; let x = rng() * t; for (let i = 0; i < weights.length; i++) if ((x -= weights[i]) <= 0) return i; return 0; }
 function rollShop() {
@@ -350,7 +353,7 @@ function addItem(id) {
 }
 function sellItem(uid) {
   const i = R.items.findIndex(x => x.uid === uid); if (i < 0) return;
-  const it = R.items[i], refund = Math.floor(priceOf(it.id) * (BASE.sellRate + perkL('sell') * 0.1));
+  const it = R.items[i], refund = Math.floor(priceOf(it.id) * (BASE.sellRate + perkRun('sell') * 0.1));
   R.items.splice(i, 1); R.gold += refund; refreshStats(); hideTip(); selected = null;
   toast(`${josa(ITEM[it.id].name, '을', '를')} 되팔아 ${fmt(refund)}냥을 받았습니다`); Sfx.play('coin');
   renderInv(); renderRes();
@@ -644,7 +647,15 @@ function takeGift(i) {
   R.gift = null; closeModal(); renderShop(); renderInv(); renderRes();
 }
 function roundsCleared() { return R.state === 'won' ? ROUNDS : Math.max(0, Math.min(ROUNDS, R.round - 1)); }
-function runScore() { return roundsCleared() * 1000 + R.kills * 3 + (R.state === 'won' ? 30000 + Math.round(R.hp / R.S.maxHp * 5000) : 0); }
+// Ranked score: rounds held decide almost everything; the last 0~999 points break ties inside the same round —
+// a loss counts how far into the deciding round you lasted (or how much of the dragon you burned down),
+// a win counts how fast the dragon fell. Kills no longer score.
+function runScore() {
+  if (R.state === 'won') return ROUNDS * 1000 + 30000 + Math.round(clamp(R.hp / R.S.maxHp, 0, 1) * 5000) + Math.max(0, 999 - Math.floor(R.time - (R.finalAt ?? R.time)));
+  const dragon = R.final && R.enemies.find(e => e.d.final);
+  const part = R.final ? (dragon ? 1 - dragon.hp / dragon.max : 0) : R.round > 0 ? R.elapsed / ROUND_TIME : 0;
+  return roundsCleared() * 1000 + Math.min(999, Math.floor(clamp(part, 0, 1) * 1000));
+}
 function finishRun() {
   const d = R.diff, cleared = roundsCleared(), won = R.state === 'won';
   const shards = Math.floor(cleared * d.mem) + (won ? Math.round(25 * d.mem) : 0);
@@ -1080,7 +1091,7 @@ function openItemTip(id) {
   const grp = R.items.filter(x => x.id === id); if (!grp.length) return;
   const it = grp[grp.length - 1], n = grp.length; selected = id; renderInv();
   const cell = $(`#inv .slot[data-item="${id}"]`) || $('#invCount');
-  showTip(cell, ITEM[id], `${n > 1 ? `<p class="gold">보유 ×${n} · 한 개씩 되팝니다</p>` : ''}<div class="actions"><button class="btn danger" data-act="sell" data-id="${it.uid}">되팔기 +${fmt(priceOf(id) * (BASE.sellRate + perkL('sell') * 0.1))}냥</button><button class="btn" data-act="untip">닫기</button></div>`);
+  showTip(cell, ITEM[id], `${n > 1 ? `<p class="gold">보유 ×${n} · 한 개씩 되팝니다</p>` : ''}<div class="actions"><button class="btn danger" data-act="sell" data-id="${it.uid}">되팔기 +${fmt(priceOf(id) * (BASE.sellRate + perkRun('sell') * 0.1))}냥</button><button class="btn" data-act="untip">닫기</button></div>`);
 }
 function invMatch(d, k) { if (k === 'all') return true; if (k === 'thorn') return d.cat === 'thorn'; if (k === 'etc') return d.cat !== 'weapon' && d.cat !== 'thorn'; return d.cat === 'weapon' && d.type === k; }
 
@@ -1357,7 +1368,7 @@ function renderCodex() {
 // ───────────────────────── menu screens ─────────────────────────
 let menuView = 'title', selDiff = 'normal', hallView = 'online';
 function showMenu(view = 'title') {
-  mode = 'menu'; menuView = view; paused = false; closeModal(); hideTip(); $('#menu').hidden = false; $('#banner').hidden = true;
+  noPerks = false; mode = 'menu'; menuView = view; paused = false; closeModal(); hideTip(); $('#menu').hidden = false; $('#banner').hidden = true;
   const m = $('#menuBody');
   if (view === 'title') {
     const wins = DIFFS.filter(d => P.wins[d.id]).map(d => d.name);
@@ -1418,7 +1429,7 @@ function renderRankMenu() {
   const wk = weekId(), left = triesLeft(), mine = P.records.filter(r => r.week === wk)[0];
   $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('주간 랭킹전')}<div class="rank-grid"><div class="rank-info">
     <div class="eyebrow gold">${wk} 주차</div><h3>모두가 같은 상점과 같은 적 순서로 겨룹니다</h3>
-    <ul class="rules"><li>난이도는 <b>보통</b>으로 고정됩니다</li><li>한 주 동안 상점 물건과 적이 나오는 순서가 모두에게 같습니다</li><li>하루 ${RANK_TRIES}번 도전할 수 있습니다 (한국 시간 자정에 다시 채워짐)</li><li>점수 = 버틴 라운드 × 1,000 + 처치 × 3, 승리하면 +30,000과 남은 체력 보너스</li><li>수호 기억으로 키운 능력도 그대로 적용됩니다</li></ul>
+    <ul class="rules"><li>난이도는 <b>보통</b>으로 고정됩니다</li><li>한 주 동안 상점 물건과 적이 나오는 순서가 모두에게 같습니다</li><li>하루 ${RANK_TRIES}번 도전할 수 있습니다 (한국 시간 자정에 다시 채워짐)</li><li>점수 = 버틴 라운드 × 1,000. 승리하면 +30,000과 남은 체력 보너스(최대 5,000)</li><li>같은 라운드끼리는 그 라운드를 더 오래 버틴 사람이, 승리끼리는 흑룡을 더 빨리 잡은 사람이 위입니다(최대 999점)</li><li><b>수호 기억은 적용되지 않습니다.</b> 모두 같은 출발선에서 겨룹니다</li></ul>
     <p>오늘 남은 도전 <b class="gold">${left} / ${RANK_TRIES}</b>${mine ? ` · 이번 주 내 최고 <b class="gold">${fmt(mine.score)}</b>점` : ''}</p>
     ${Cloud.api ? (Cloud.acct ? `<p class="field-row">참가 아이디 <b class="gold">${Cloud.acct.id}</b></p>` : '<p class="field-row">주간 랭킹전은 로그인해야 참가할 수 있습니다. 명예의 전당에는 아이디가 올라갑니다.</p>') : '<label class="field-row">닉네임 <input id="nickMenu" maxlength="12" placeholder="랭킹에 표시할 이름" autocomplete="off"></label>'}
     ${Cloud.api && !Cloud.acct ? '<button class="btn primary big" data-act="acct" data-id="login" data-focus>로그인 · 회원가입</button>' : `<button class="btn primary big" data-act="rankStart" ${left ? '' : 'disabled'} data-focus>${left ? '▶ 랭킹전 출전' : '오늘 도전을 모두 썼습니다'}</button>`}</div>
@@ -1460,7 +1471,7 @@ function startRun(diffId, ranked) {
   closeModal(); newRun(diffId, ranked); mode = 'run'; paused = false; speed = 1; fpanel = null; invFilter = 'all'; selected = null; hideTip();
   $('#menu').hidden = true; $('#fpanel').hidden = true; for (const b of $$('[data-act="fp"]')) b.classList.remove('on');
   renderShop(); renderInv(); renderHud(true); Sfx.ensure();
-  banner(R.ranked ? `주간 랭킹전 ${weekId()}` : R.diff.name, `${PREP_TIME}초 뒤 첫 라운드 · 장터에서 무기를 사세요`);
+  banner(R.ranked ? `주간 랭킹전 ${weekId()}` : R.diff.name, R.ranked ? `수호 기억 없이 모두 같은 출발선 · ${PREP_TIME}초 뒤 첫 라운드` : `${PREP_TIME}초 뒤 첫 라운드 · 장터에서 무기를 사세요`);
   if (!P.tutorial) showTutorial();
 }
 function showTutorial() {
