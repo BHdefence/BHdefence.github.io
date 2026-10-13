@@ -262,8 +262,8 @@ const NEWS = [
 // 장작 보태기 (후원). A button shows only for links that are filled in; supporters are added by hand.
 const SUPPORT = {
   links: [
+    { label: '카카오페이로 보태기', url: 'https://qr.kakaopay.com/FdKSz3NCa' },
     { label: '토스로 보태기', url: '' },
-    { label: '카카오페이로 보태기', url: '' },
   ],
   thanks: [],
 };
