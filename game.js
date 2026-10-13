@@ -1015,6 +1015,8 @@ document.addEventListener('pointerdown', e => { lastPointer = e.pointerType || '
 document.addEventListener('pointerover', e => {
   if (lastPointer !== 'mouse' && e.pointerType !== 'mouse') return;
   const el = e.target.closest('[data-item]'); if (!el || !R) return;
+  // A bag item opened by click keeps its sell tooltip; hover tips wait until it is closed.
+  if (selected !== null || (!tip.hidden && tip.querySelector('[data-act="sell"]'))) return;
   const d = ITEM[el.dataset.item]; showTip(el, d, el.dataset.uid ? `<p class="hint">눌러서 되팔기</p>` : `<p class="hint">눌러서 구매 · 숫자키 ${+el.dataset.slot + 1}</p>`);
 });
 document.addEventListener('pointerout', e => { const el = e.target.closest('[data-item]'); if (el && !el.contains(e.relatedTarget) && selected === null) hideTip(); });
