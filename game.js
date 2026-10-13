@@ -518,6 +518,12 @@ function kill(e, w) {
   for (let i = 0; i < (e.boss ? 30 : 6); i++) R.fx.push({ k: 'p', x: e.x + rand(-e.r, e.r), y: e.y - rand(0, e.r * 2), vx: rand(-34, 34), vy: rand(-46, -4), t: 0, life: rand(0.3, 0.7), c: i % 3 === 0 ? '#fff2d0' : i % 3 === 1 ? '#3a2a3a' : '#8a7a8a' });
   if (e.burnT > 0 && S.elemStep.fire >= 2) { for (const o of R.enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 22) { o.burnT = 3; o.burnDps = Math.max(o.burnDps, e.burnDps * 0.8); o.burnSrc = e.burnSrc; } R.fx.push({ k: 'boom', x: e.x, y: e.y - 4, r: 18, t: 0, life: 0.25, c: '#ff8a3a' }); }
   if (e.boss) { R.shake = 8; hitStop = e.d.final ? 0.7 : 0.35; R.fx.push({ k: 'boom', x: e.x, y: e.y - 10, r: 46, t: 0, life: 0.6, c: '#f3c94a' }); R.fx.push({ k: 'ring', x: e.x, y: e.y - 10, r: 90, t: 0, life: 0.8, c: '#fff2a8', big: true }); if (!e.d.final) banner('보스 토벌', e.d.name, 'gold', '토벌'); }
+  if (R.diff.revive && !e.ghost && !e.boss && !e.d.treasure && Math.random() < R.diff.revive) {
+    // 저승길: the fallen rise once more as a pale 원혼 with part of their health and no bounty
+    const o = spawnFoe(e.kind, 0, 0, { x: e.x, y: e.y });
+    Object.assign(o, { ghost: true, hp: o.max * 0.4, bounty: 0, spd: o.spd * 1.15, face: e.face, flash: 0.15 });
+    R.fx.push({ k: 'ring', x: e.x, y: e.y - 6, r: 14, t: 0, life: 0.5, c: '#9ff0e6' });
+  }
   Sfx.play('coin', 80);
   if (e.d.final) win();
 }
@@ -698,6 +704,7 @@ function stepAmb(dt, hpRatio, T) {
     if (a.k === 'ember') { a.vx += Math.sin(clock * 3 + a.y) * 20 * dt; a.vy *= 1 - dt * 0.6; }
     if (a.k === 'smoke') { a.r += dt * 2.2; a.vx += dt * 2; }
     if (a.k === 'leaf') a.x += Math.sin(clock * 2 + a.ph) * 10 * dt;
+    if (a.k === 'soul') { a.vx += Math.sin(clock * 2 + a.ph) * 6 * dt; a.vy = -6; }
     if (a.k === 'firefly' || a.k === 'wisp') { a.vx += rand(-20, 20) * dt; a.vy += rand(-20, 20) * dt; a.vx *= 0.98; a.vy *= 0.98; }
     a.x += a.vx * dt; a.y += a.vy * dt;
     if (a.t < a.life && a.y < FH + 6 && a.y > -40) AMB[w++] = a;
@@ -715,6 +722,7 @@ function drawAmb(over) {
     }
     if (a.k === 'ember') pr(g, a.x, a.y, 1, 1, p < 0.3 ? '#fff2a8' : p < 0.65 ? '#f3a33a' : '#c8452a');
     else if (a.k === 'firefly') { const on = Math.sin(clock * 3 + a.ph) > 0.2; if (on) { pr(g, a.x, a.y, 1, 1, '#e8ff9a'); g.globalAlpha = 0.25; pr(g, a.x - 1, a.y - 1, 3, 3, '#c8ff6a'); g.globalAlpha = 1; } }
+    else if (a.k === 'soul') { g.globalAlpha = Math.sin(p * Math.PI) * 0.75; pr(g, a.x, a.y, 1, 2, '#9ff0e6'); pr(g, a.x, a.y - 1, 1, 1, '#e8fff8'); g.globalAlpha = 1; }
     else if (a.k === 'wisp') { g.globalAlpha = Math.sin(p * Math.PI) * 0.8; pr(g, a.x, a.y, 1, 1, '#d6b4ff'); g.globalAlpha = 1; }
   }
 }
@@ -804,7 +812,9 @@ function drawFoe(e) {
   pell(g, e.x + ux * (2 + e.r * 0.3), e.y + 1 + uy * 1.5, Math.max(3, e.r), Math.max(1, Math.round(e.r * 0.35)), e.d.float ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.38)');
   const flip = e.face > 0;
   e._x = x; e._y = y; e._flip = flip;
+  if (e.ghost) { y -= 2 + Math.round(Math.sin(e.life * 3 + e.id) * 1.5); g.globalAlpha = 0.55; }
   g.drawImage(e.flash > 0 ? (flip ? spr.whiteFlip : spr.white)[frame] : (flip ? spr.flip : spr.frames)[frame], x, y);
+  if (e.ghost) { g.globalAlpha = 0.5; g.drawImage(spr.ice, x, y); g.globalAlpha = 1; }
   if (e.freezeT > 0) { g.globalAlpha = 0.55; g.drawImage(spr.ice, x, y); g.globalAlpha = 1; }
   if (e.burnT > 0) for (let i = 0; i < 2; i++) if (Math.floor(clock * 12 + e.id + i * 5) % 3 === 0) pr(g, x + ((e.id * 7 + i * 5) % spr.w), y - 1 - i, 1, 2, i ? '#ffd27a' : '#ff8a3a');
   if (e.pStacks > 0 && Math.floor(clock * 8 + e.id) % 4 === 0) pr(g, x + ((e.id * 5 + 3) % spr.w), y + 2, 1, 1, '#97e04f');
@@ -1174,7 +1184,7 @@ function showResult(res) {
   const won = R.state === 'won', d = R.diff, cleared = roundsCleared(), canOnline = R.ranked && Cloud.online && !Cloud.api, autoOnline = R.ranked && Cloud.api && !!Cloud.acct && !!res.rec;
   openModal(`<div class="eyebrow ${won ? 'gold' : 'bad'}">${d.name}${R.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}</div><h2>${won ? '봉화를 끝까지 지켰습니다' : R.round === 0 ? '출정 전에 물러났습니다' : `${R.round} 라운드에서 봉화가 꺼졌습니다`}</h2>
     <dl class="facts"><dt>버틴 라운드</dt><dd>${cleared} / ${ROUNDS}${won ? ' + 흑룡' : ''}</dd><dt>처치</dt><dd>${fmt(R.kills)}</dd><dt>시간</dt><dd>${Math.floor(R.time / 60)}분 ${Math.floor(R.time % 60)}초</dd><dt>기억 조각</dt><dd class="gold">+${res.shards}</dd>${res.rec ? `<dt>랭킹 점수</dt><dd class="gold big">${fmt(res.rec.score)}</dd>` : ''}</dl>
-    ${won && d.id === 'hard' && P.wins.hard === 1 ? '<p class="gold">악몽 I이 열렸습니다</p>' : ''}${won && d.id === 'nm1' && P.wins.nm1 === 1 ? '<p class="gold">악몽 II가 열렸습니다</p>' : ''}${won && d.id === 'nm2' && P.wins.nm2 === 1 ? '<p class="gold">악몽 III이 열렸습니다</p>' : ''}
+    ${won && d.id === 'hard' && P.wins.hard === 1 ? '<p class="gold">악몽 I이 열렸습니다</p>' : ''}${won && d.id === 'nm1' && P.wins.nm1 === 1 ? '<p class="gold">악몽 II가 열렸습니다</p>' : ''}${won && d.id === 'nm2' && P.wins.nm2 === 1 ? '<p class="gold">악몽 III이 열렸습니다</p>' : ''}${won && d.id === 'nm3' && P.wins.nm3 === 1 ? '<p class="gold">저승길이 열렸습니다</p>' : ''}
     ${canOnline ? `<div class="submit"><input id="nickIn" maxlength="12" placeholder="닉네임" aria-label="닉네임" autocomplete="off"><button class="btn primary" data-act="submit">온라인 랭킹 등록</button></div><p class="dim small" id="submitNote">이 기기 기록에는 자동으로 남겼습니다. 온라인에는 한 사람당 이번 주 최고 기록 하나가 올라갑니다.</p>` : autoOnline ? `<p class="small" id="submitNote">명예의 전당에 <b>${Cloud.acct.id}</b>(으)로 올리는 중입니다…</p>` : R.ranked ? `<p class="dim small">이 기기 랭킹에 기록했습니다.${Cloud.api ? ' 로그인하면 명예의 전당에 올라갑니다.' : ''}</p>` : ''}
     ${R.round > 0 ? '<button class="btn share-btn" data-act="share">기록 공유 · 자랑하기</button>' : ''}
     <div class="actions"><button class="btn" data-act="menu">메뉴로</button>${R.ranked ? '<button class="btn" data-act="hall">명예의 전당</button>' : '<button class="btn" data-act="perks">수호 기억</button>'}${R.ranked ? (triesLeft() > 0 ? '<button class="btn primary" data-act="rankStart" data-focus>다시 도전</button>' : '') : `<button class="btn primary" data-act="again" data-focus>다시 하기</button>`}</div>`, won ? 'win' : 'lose');

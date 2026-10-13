@@ -424,6 +424,7 @@ const FW = 400, FH = 360, CX = 200, CY = 184, PLAZA_R = 62;
 const THEMES = {
   field:  { grass: ['#2c5233', '#36633a', '#417443', '#55894b'], flower: ['#f0d36a', '#e98fb8', '#f4f1e7'], path: ['#6a5a40', '#7a684a', '#887555'], stone: ['#7d8290', '#8f94a0', '#6a6f7c'], rim: '#474b57', tree: ['#1f4528', '#2c5c34', '#3b7343'], trunk: '#4a3322', amb: '10,14,46', dark: 0.6, edge: 0.32, mote: 'firefly' },
   autumn: { grass: ['#5e4f28', '#6e5e2f', '#7f6c35', '#95803f'], flower: ['#e0672f', '#f0b24a', '#c94a2c'], path: ['#5f4a34', '#6e563c', '#7d6446'], stone: ['#857b70', '#968a7c', '#6f665c'], rim: '#4a423a', tree: ['#8a3a20', '#b5532c', '#d27a33'], trunk: '#432c1c', amb: '26,12,34', dark: 0.64, edge: 0.3, mote: 'leaf' },
+  nether: { grass: ['#13232a', '#182c33', '#1e363c', '#284446'], flower: ['#d8283a', '#ff4a5a', '#e8e4dc'], path: ['#4a4a50', '#58585e', '#68676c'], stone: ['#5c6670', '#6c7680', '#4a525c'], rim: '#262c34', tree: ['#16222a', '#1e2c34', '#283840'], trunk: '#1a2228', amb: '2,10,18', dark: 0.74, edge: 0.28, mote: 'soul', dead: true, lily: true, seed: 5, win: '#9ff0e6', winLight: '120,240,220', lamp: '120,220,255' },
   night:  { grass: ['#211d33', '#29243e', '#322c4a', '#3d3658'], flower: ['#8a5ad8', '#5ab0d8', '#c84a6a'], path: ['#3c3346', '#463c52', '#51465e'], stone: ['#5a5868', '#6a6878', '#4c4a5a'], rim: '#2a2834', tree: ['#241c32', '#30263f', '#3d3150'], trunk: '#221a2a', amb: '8,4,22', dark: 0.7, edge: 0.24, mote: 'wisp', dead: true },
 };
 const hexRgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -446,7 +447,7 @@ const LANTERNS = [[CX - 22, CY - 78], [CX + 22, CY - 78], [CX - 22, CY + 96], [C
 const TORCHES = [[CX - 44, CY - 42], [CX + 43, CY - 42], [CX - 44, CY + 46], [CX + 43, CY + 46]];
 function paintField(theme) {
   const T = THEMES[theme], cv = document.createElement('canvas'); cv.width = FW; cv.height = FH;
-  const g = cv.getContext('2d'), rnd = mulberry32(theme.length * 9173 + 41), lights = [];
+  const g = cv.getContext('2d'), rnd = mulberry32(theme.length * 9173 + 41 + (T.seed || 0)), lights = [];
   const n1 = vnoise(rnd, 46), n2 = vnoise(rnd, 13), n3 = vnoise(rnd, 7);
   const grass = T.grass.map(hexRgb), path = T.path.map(hexRgb), stone = T.stone.map(hexRgb), rim = hexRgb(T.rim);
   const img = g.createImageData(FW, FH), px = img.data;
@@ -481,8 +482,14 @@ function paintField(theme) {
   for (let i = 0; i < 220; i++) { const x = rnd() * FW, y = rnd() * FH; if (clear(x, y)) continue; const c = T.grass[3]; pr(g, x, y, 1, 2, c); pr(g, x + 1, y + 1, 1, 1, c); pr(g, x - 1, y + 1, 1, 1, c); }
   for (let i = 0; i < 26; i++) { const x = rnd() * FW, y = rnd() * FH; if (clear(x, y, 4)) continue; pell(g, x + 1, y + 2, 3, 1, 'rgba(0,0,0,0.3)'); pell(g, x, y, 3, 2, T.stone[2]); pr(g, x - 1, y - 1, 2, 1, T.stone[1]); }
   // cottages and lanterns: their windows and paper shades are light sources at night
+  // 저승길: red spider lilies (꽃무릇) crowd the roadsides
+  if (T.lily) for (let i = 0; i < 90; i++) {
+    const along = rnd() * FW, off = (16 + rnd() * 10) * (rnd() < 0.5 ? -1 : 1), v = rnd() < 0.5, x = v ? CX + off : along, y = v ? along * FH / FW : CY + off;
+    if (Math.hypot(x - CX, y - CY) < PLAZA_R + 10 || HOUSES.some(([hx, hy]) => Math.hypot(x - hx, y - hy + 8) < 24)) continue;
+    pr(g, x, y, 1, 3, '#2e5a3a'); pr(g, x - 1, y - 1, 3, 1, T.flower[0]); pr(g, x - 2, y - 2, 1, 1, T.flower[1]); pr(g, x + 2, y - 2, 1, 1, T.flower[1]); pr(g, x, y - 2, 1, 1, T.flower[1]);
+  }
   for (const [hx, hy] of HOUSES) lights.push(drawHouse(g, hx, hy, rnd, T));
-  for (const [lx, ly] of LANTERNS) lights.push(drawLantern(g, lx, ly));
+  for (const [lx, ly] of LANTERNS) lights.push(drawLantern(g, lx, ly, T));
   // trees around the edge, keeping roads and yards clear
   const trees = [];
   for (let i = 0; i < 600 && trees.length < 44; i++) {
@@ -512,7 +519,7 @@ function drawHouse(g, x, y, rnd, T) {
   pr(g, x - 12, y - 11, 24, 11, '#cdbb92'); pr(g, x - 12, y - 2, 24, 2, '#7d7568');
   for (const px of [-12, -4, 4, 11]) pr(g, x + px, y - 11, 1, 10, '#5a3c26');
   pr(g, x - 9, y - 9, 4, 8, '#3a2a1c'); pr(g, x - 9, y - 9, 4, 1, '#5a3c26');
-  pr(g, x + 5, y - 9, 5, 4, PAL.k); pr(g, x + 6, y - 8, 3, 2, '#ffd982');
+  pr(g, x + 5, y - 9, 5, 4, PAL.k); pr(g, x + 6, y - 8, 3, 2, T.win || '#ffd982');
   for (let r = 0; r <= 11; r++) {
     const w = Math.round(17 * Math.sqrt(Math.max(0, 1 - ((11 - r) / 11.5) ** 2))), yy = y - 23 + r;
     pr(g, x - w - 1, yy, w * 2 + 2, 1, PAL.k);
@@ -520,12 +527,14 @@ function drawHouse(g, x, y, rnd, T) {
   }
   for (let i = 0; i < 40; i++) { const r = 2 + rnd() * 9, w = 16 * Math.sqrt(1 - ((11 - r) / 11.5) ** 2); pr(g, x - w + rnd() * w * 2, y - 23 + r, 1, 2, '#8e6a34'); }
   pr(g, x - 18, y - 12, 36, 1, '#6a4c26');
-  return { x: x + 7, y: y - 7, r: 26, i: 0.85, c: '255,190,110', ca: 0.22 };
+  return { x: x + 7, y: y - 7, r: 26, i: 0.85, c: T.winLight || '255,190,110', ca: 0.22 };
 }
-function drawLantern(g, x, y) {
-  // 청사초롱 on a wooden post: red silk top, blue skirt
+function drawLantern(g, x, y, T = {}) {
+  // 청사초롱 on a wooden post: red silk top, blue skirt (저승길: pale soul-fire lamps)
   pr(g, x, y - 16, 1, 17, '#3a2a1c'); pr(g, x - 3, y - 16, 4, 1, '#3a2a1c');
-  pr(g, x - 5, y - 15, 5, 7, PAL.k); pr(g, x - 4, y - 14, 3, 3, '#e04a32'); pr(g, x - 4, y - 11, 3, 2, '#3c5ac0'); pr(g, x - 3, y - 14, 1, 2, '#ffd2a0');
+  pr(g, x - 5, y - 15, 5, 7, PAL.k);
+  if (T.lamp) { pr(g, x - 4, y - 14, 3, 5, '#e8f4f0'); pr(g, x - 3, y - 13, 1, 3, '#9ff0e6'); return { x: x - 3, y: y - 12, r: 26, i: 0.8, c: T.lamp, ca: 0.24 }; }
+  pr(g, x - 4, y - 14, 3, 3, '#e04a32'); pr(g, x - 4, y - 11, 3, 2, '#3c5ac0'); pr(g, x - 3, y - 14, 1, 2, '#ffd2a0');
   return { x: x - 3, y: y - 12, r: 24, i: 0.8, c: '255,120,80', ca: 0.2 };
 }
 // The beacon: a Joseon 봉수대 — a stone platform with five chimneys (연조). Each lit chimney is 20% of the beacon's health,
