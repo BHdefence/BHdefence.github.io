@@ -10,7 +10,7 @@
 npx http-server .   # 그다음 http://localhost:8080/
 ```
 
-**바로 플레이:** https://bhdefence.github.io/bonghwa/ (GitHub Pages)
+**바로 플레이:** https://bhdefence.github.io/ (GitHub Pages)
 
 ## 화면
 
