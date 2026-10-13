@@ -1,0 +1,9 @@
+name = "bonghwa-api"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bonghwa"
+database_id = "ba306d11-21cc-48ae-b22c-21bbdfa692f3"

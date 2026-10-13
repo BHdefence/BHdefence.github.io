@@ -1060,13 +1060,20 @@ function setPaused(v) {
   renderHud(true);
 }
 function showResult(res) {
-  const won = R.state === 'won', d = R.diff, cleared = roundsCleared(), canOnline = R.ranked && !!Cloud.db;
+  const won = R.state === 'won', d = R.diff, cleared = roundsCleared(), canOnline = R.ranked && Cloud.online && !Cloud.api, autoOnline = R.ranked && Cloud.api && !!Cloud.acct && !!res.rec;
   openModal(`<div class="eyebrow ${won ? 'gold' : 'bad'}">${d.name}${R.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}</div><h2>${won ? '봉화를 끝까지 지켰습니다' : R.round === 0 ? '출정 전에 물러났습니다' : `${R.round} 라운드에서 봉화가 꺼졌습니다`}</h2>
     <dl class="facts"><dt>버틴 라운드</dt><dd>${cleared} / ${ROUNDS}${won ? ' + 흑룡' : ''}</dd><dt>처치</dt><dd>${fmt(R.kills)}</dd><dt>시간</dt><dd>${Math.floor(R.time / 60)}분 ${Math.floor(R.time % 60)}초</dd><dt>기억 조각</dt><dd class="gold">+${res.shards}</dd>${res.rec ? `<dt>랭킹 점수</dt><dd class="gold big">${fmt(res.rec.score)}</dd>` : ''}</dl>
     ${won && d.id === 'hard' && P.wins.hard === 1 ? '<p class="gold">악몽 I이 열렸습니다</p>' : ''}${won && d.id === 'nm1' && P.wins.nm1 === 1 ? '<p class="gold">악몽 II가 열렸습니다</p>' : ''}${won && d.id === 'nm2' && P.wins.nm2 === 1 ? '<p class="gold">악몽 III이 열렸습니다</p>' : ''}
-    ${canOnline ? `<div class="submit"><input id="nickIn" maxlength="12" placeholder="닉네임" aria-label="닉네임" autocomplete="off"><button class="btn primary" data-act="submit">온라인 랭킹 등록</button></div><p class="dim small" id="submitNote">이 기기 기록에는 자동으로 남겼습니다. 온라인에는 한 사람당 이번 주 최고 기록 하나가 올라갑니다.</p>` : R.ranked ? '<p class="dim small">이 기기 랭킹에 기록했습니다.</p>' : ''}
+    ${canOnline ? `<div class="submit"><input id="nickIn" maxlength="12" placeholder="닉네임" aria-label="닉네임" autocomplete="off"><button class="btn primary" data-act="submit">온라인 랭킹 등록</button></div><p class="dim small" id="submitNote">이 기기 기록에는 자동으로 남겼습니다. 온라인에는 한 사람당 이번 주 최고 기록 하나가 올라갑니다.</p>` : autoOnline ? `<p class="small" id="submitNote">명예의 전당에 <b>${Cloud.acct.id}</b>(으)로 올리는 중입니다…</p>` : R.ranked ? `<p class="dim small">이 기기 랭킹에 기록했습니다.${Cloud.api ? ' 로그인하면 명예의 전당에 올라갑니다.' : ''}</p>` : ''}
     <div class="actions"><button class="btn" data-act="menu">메뉴로</button>${R.ranked ? '<button class="btn" data-act="hall">명예의 전당</button>' : '<button class="btn" data-act="perks">수호 기억</button>'}${R.ranked ? (triesLeft() > 0 ? '<button class="btn primary" data-act="rankStart" data-focus>다시 도전</button>' : '') : `<button class="btn primary" data-act="again" data-focus>다시 하기</button>`}</div>`, won ? 'win' : 'lose');
   const ni = $('#nickIn'); if (ni) ni.value = P.nick;
+  if (autoOnline) autoSubmit(res.rec);
+}
+// Signed-in players' ranked runs go to the Hall of Fame on their own, under their account id.
+async function autoSubmit(rec) {
+  rec.nick = Cloud.acct.id; persist();
+  const r = await Cloud.submit(rec), note = $('#submitNote'); if (!note) return;
+  note.textContent = r.ok ? (r.kept ? `이번 주에 더 높은 기록(${fmt(r.prev)}점)이 이미 올라가 있어 그 기록을 둡니다.` : '명예의 전당에 올렸습니다 ✓') : (r.message || '올리지 못했습니다. 이 기기 기록에는 남겼습니다.');
 }
 async function submitRank() {
   const ni = $('#nickIn'), note = $('#submitNote'), btn = $('#modalCard [data-act="submit"]'), nick = cleanNick(ni && ni.value);
@@ -1086,7 +1093,7 @@ function showMenu(view = 'title') {
   const m = $('#menuBody');
   if (view === 'title') {
     const wins = DIFFS.filter(d => P.wins[d.id]).map(d => d.name);
-    m.innerHTML = `<div class="title-wrap"><div class="logo"><h1>봉화대 사수</h1><span class="seal-big">봉수</span><span class="logo-sub">다섯 홰의 불이 꺼지기 전에</span></div>
+    m.innerHTML = `${Cloud.api ? `<button class="acct-btn${Cloud.acct ? ' in' : ''}" data-act="acct">${Cloud.acct ? `${Cloud.acct.id} ✓` : '게스트 · 로그인'}</button>` : ''}<div class="title-wrap"><div class="logo"><h1>봉화대 사수</h1><span class="seal-big">봉수</span><span class="logo-sub">다섯 홰의 불이 꺼지기 전에</span></div>
       <nav class="mnav">
         <button class="mbtn main" data-act="go-select" data-focus>출정하기</button>
         <button class="mbtn" data-act="go-rank">주간 랭킹전 <span class="badge">${triesLeft()}/${RANK_TRIES}</span></button>
@@ -1142,20 +1149,21 @@ function renderRankMenu() {
     <div class="eyebrow gold">${wk} 주차</div><h3>모두가 같은 상점과 같은 적 순서로 겨룹니다</h3>
     <ul class="rules"><li>난이도는 <b>보통</b>으로 고정됩니다</li><li>한 주 동안 상점 물건과 적이 나오는 순서가 모두에게 같습니다</li><li>하루 ${RANK_TRIES}번 도전할 수 있습니다 (한국 시간 자정에 다시 채워짐)</li><li>점수 = 버틴 라운드 × 1,000 + 처치 × 3, 승리하면 +30,000과 남은 체력 보너스</li><li>수호 기억으로 키운 능력도 그대로 적용됩니다</li></ul>
     <p>오늘 남은 도전 <b class="gold">${left} / ${RANK_TRIES}</b>${mine ? ` · 이번 주 내 최고 <b class="gold">${fmt(mine.score)}</b>점` : ''}</p>
-    <label class="field-row">닉네임 <input id="nickMenu" maxlength="12" placeholder="랭킹에 표시할 이름" autocomplete="off"></label>
-    <button class="btn primary big" data-act="rankStart" ${left ? '' : 'disabled'} data-focus>${left ? '▶ 랭킹전 출전' : '오늘 도전을 모두 썼습니다'}</button></div>
+    ${Cloud.api ? (Cloud.acct ? `<p class="field-row">참가 아이디 <b class="gold">${Cloud.acct.id}</b></p>` : '<p class="field-row">주간 랭킹전은 로그인해야 참가할 수 있습니다. 명예의 전당에는 아이디가 올라갑니다.</p>') : '<label class="field-row">닉네임 <input id="nickMenu" maxlength="12" placeholder="랭킹에 표시할 이름" autocomplete="off"></label>'}
+    ${Cloud.api && !Cloud.acct ? '<button class="btn primary big" data-act="acct" data-id="login" data-focus>로그인 · 회원가입</button>' : `<button class="btn primary big" data-act="rankStart" ${left ? '' : 'disabled'} data-focus>${left ? '▶ 랭킹전 출전' : '오늘 도전을 모두 썼습니다'}</button>`}</div>
     <div class="rank-board">${boardHtml(wk)}</div></div></div>`;
-  const ni = $('#nickMenu'); ni.value = P.nick; ni.addEventListener('change', () => { P.nick = cleanNick(ni.value); ni.value = P.nick; persist(); });
+  Cloud.refreshBoard(wk);
+  const ni = $('#nickMenu'); if (ni) ni.value = P.nick; if (ni) ni.addEventListener('change', () => { P.nick = cleanNick(ni.value); ni.value = P.nick; persist(); });
   fillBoard(wk);
 }
 function boardHtml(wk) {
-  const online = hallView === 'online' && !!Cloud.db;
-  return `<div class="board-h"><h3>${wk} 순위</h3><div class="seg">${Cloud.db ? `<button class="${online ? 'on' : ''}" data-act="hallView" data-id="online">온라인</button>` : ''}<button class="${online ? '' : 'on'}" data-act="hallView" data-id="local">이 기기</button></div></div><p class="dim small" id="boardNote"></p><div class="tbl"><table class="rank"><thead><tr><th>순위</th><th>이름</th><th class="r">점수</th><th class="r">도달</th><th class="r">처치</th></tr></thead><tbody id="boardBody"></tbody></table></div>`;
+  const online = hallView === 'online' && Cloud.online;
+  return `<div class="board-h"><h3>${wk} 순위</h3><div class="seg">${Cloud.online ? `<button class="${online ? 'on' : ''}" data-act="hallView" data-id="online">온라인</button>` : ''}<button class="${online ? '' : 'on'}" data-act="hallView" data-id="local">이 기기</button></div></div><p class="dim small" id="boardNote"></p><div class="tbl"><table class="rank"><thead><tr><th>순위</th><th>이름</th><th class="r">점수</th><th class="r">도달</th><th class="r">처치</th></tr></thead><tbody id="boardBody"></tbody></table></div>`;
 }
 function fillBoard(wk) {
   const body = $('#boardBody'); if (!body) return;
-  const online = hallView === 'online' && !!Cloud.db, rows = online ? Cloud.board.filter(r => r.week === wk) : P.records.filter(r => r.week === wk);
-  $('#boardNote').textContent = online ? (Cloud.boardErr ? '온라인 순위를 불러오지 못했습니다.' : Cloud.boardLoaded ? '한 사람당 이번 주 최고 기록 하나가 올라갑니다.' : '불러오는 중입니다…') : (Cloud.db ? '이 기기에서 세운 이번 주 기록입니다.' : '온라인 랭킹 저장소에 연결되지 않은 화면이라 이 기기 기록만 보여 줍니다.');
+  const online = hallView === 'online' && Cloud.online, rows = online ? Cloud.board.filter(r => r.week === wk) : P.records.filter(r => r.week === wk);
+  $('#boardNote').textContent = online ? (Cloud.boardErr ? '온라인 순위를 불러오지 못했습니다.' : Cloud.boardLoaded ? `한 사람당 이번 주 최고 기록 하나가 올라갑니다 · 참가 ${fmt(Cloud.boardCount)}명` : '불러오는 중입니다…') : (Cloud.online ? '이 기기에서 세운 이번 주 기록입니다.' : '온라인 랭킹 저장소에 연결되지 않은 화면이라 이 기기 기록만 보여 줍니다.');
   body.textContent = '';
   if (!rows.length) { const tr = document.createElement('tr'), td = document.createElement('td'); td.colSpan = 5; td.className = 'empty'; td.textContent = online && !Cloud.boardLoaded ? '…' : '아직 기록이 없습니다'; tr.append(td); body.append(tr); return; }
   rows.slice(0, 50).forEach((r, i) => {
@@ -1168,13 +1176,13 @@ function renderHall() {
   const wk = weekId();
   $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('명예의 전당')}<div class="rank-grid"><div class="rank-board">${boardHtml(wk)}</div>
     <div class="rank-info"><h3>난이도별 내 기록</h3><table class="rank"><thead><tr><th>난이도</th><th class="r">최고</th><th class="r">승리</th></tr></thead><tbody>${DIFFS.map(d => `<tr><td>${d.name}</td><td class="r">${P.best[d.id] ? (P.best[d.id] > ROUNDS ? '흑룡 토벌' : P.best[d.id] + ' 라운드') : '-'}</td><td class="r">${P.wins[d.id] || 0}</td></tr>`).join('')}</tbody></table></div></div></div>`;
-  fillBoard(wk);
+  fillBoard(wk); Cloud.refreshBoard(wk);
 }
 let resetArmed = 0;
 function renderSettings() {
   $('#menuBody').innerHTML = `${scrollOpen('narrow')}${panelHead('설정')}<div class="settings"><button class="btn" data-act="sound">소리 ${P.sound ? '켬' : '끔'}</button>
     <h3>조작</h3><table class="keys"><tr><td>1 ~ 8</td><td>상점 칸 구매 (휴대폰은 두 번 눌러 구매)</td></tr><tr><td>R</td><td>상점 새로고침</td></tr><tr><td>Z</td><td>천벌: 화면의 적을 한꺼번에 쓸어냅니다 (보스는 일부 피해)</td></tr><tr><td>B · D · G · H</td><td>세트 · 딜미터 · 사거리 · 상성표</td></tr><tr><td>Tab</td><td>배속 ×1 ×2 ×3</td></tr><tr><td>Space · Esc</td><td>잠시 멈춤</td></tr></table>
-    <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.</p><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div>`;
+    <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.${Cloud.api ? (Cloud.acct ? ` (계정: ${Cloud.acct.id})` : ' 로그인하면 다른 기기에서도 이어서 할 수 있습니다.') : ''}</p><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div>`;
 }
 function startRun(diffId, ranked) {
   if (ranked) { if (triesLeft() <= 0) return; if (P.ranked.day !== dayId()) P.ranked = { day: dayId(), used: 0 }; P.ranked.used++; persist(); }
@@ -1235,7 +1243,11 @@ document.addEventListener('click', ev => {
     case 'settings': showMenu('settings'); break;
     case 'diff': selDiff = id; renderSelect(); $(`[data-act="diff"][data-id="${id}"]`)?.focus(); break;
     case 'start': if (unlocked(DIFF[selDiff])) startRun(selDiff, false); break;
-    case 'rankStart': if (triesLeft() > 0) startRun('normal', true); break;
+    case 'rankStart': if (Cloud.api && !Cloud.acct) { showAccount('login', '주간 랭킹전은 로그인해야 참가할 수 있습니다.'); break; } if (triesLeft() > 0) startRun('normal', true); break;
+    case 'acct': showAccount(id); break;
+    case 'acct-done': closeModal(); if (mode === 'menu') showMenu(menuView); break;
+    case 'acct-logout': Cloud.logout().then(() => { closeModal(); toast('로그아웃했습니다. 게스트로 계속합니다'); if (mode === 'menu') showMenu(menuView); }); break;
+    case 'acct-copy': { const t = $('#accCodeOut').textContent; const ok = () => { el.textContent = '복사됨 ✓'; }; if (navigator.clipboard) navigator.clipboard.writeText(t).then(ok, () => { const r = document.createRange(); r.selectNodeContents($('#accCodeOut')); getSelection().removeAllRanges(); getSelection().addRange(r); }); break; }
     case 'perk': buyPerk(id); break;
     case 'hallView': hallView = id; if (menuView === 'rank') renderRankMenu(); else renderHall(); break;
     case 'sound': P.sound = !P.sound; persist(); renderSettings(); break;
@@ -1271,38 +1283,95 @@ window.addEventListener('keydown', ev => {
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'run' && R && R.state === 'run' && !paused && !R.gift && P.tutorial) setPaused(true); });
 
-// ───────────────────────── shared ranking & cloud save (artifact runtime) ─────────────────────────
-// Inside the claude.ai artifact viewer `window.claude.use` reaches a shared store: `rank/<viewer id>` holds each
-// player's best run of the current week, and `data/users/<id>/save` mirrors their profile. Elsewhere it stays local.
+// ───────────────────────── accounts, shared ranking & cloud save ─────────────────────────
+// Two backends. Inside the claude.ai artifact viewer `window.claude.use` reaches a shared store (`rank/<viewer id>`,
+// `data/users/<id>/save`) and the viewer is already signed in. Everywhere else (GitHub Pages) the game talks to the
+// bonghwa-api Cloudflare Worker: players sign up with an English id and password, play as guests otherwise, and only
+// signed-in players appear in the Hall of Fame.
+const API_BASE = (() => { try { return localStorage.getItem('bonghwa-api') || 'https://bonghwa-api.kkjlg.workers.dev'; } catch (e) { return 'https://bonghwa-api.kkjlg.workers.dev'; } })();
+const AUTH_KEY = 'bonghwa-auth';
+const ID_RULES = [['영문 소문자로 시작', v => /^[a-z]/.test(v)], ['영문 소문자·숫자·_ 만', v => v !== '' && /^[a-z0-9_]+$/.test(v)], ['4~16자', v => v.length >= 4 && v.length <= 16]];
+const PW_RULES = [['8~64자', v => v.length >= 8 && v.length <= 64], ['한글 불가', v => v !== '' && !/[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(v)], ['영문·숫자·특수문자 가능', v => v !== '' && /^[\x21-\x7e]+$/.test(v)]];
 const Cloud = {
-  db: null, uid: null, board: [], boardLoaded: false, boardErr: false, timer: 0, chain: Promise.resolve(), unsub: null,
+  mode: null, db: null, uid: null, acct: null, board: [], boardCount: 0, boardLoaded: false, boardErr: false, timer: 0, chain: Promise.resolve(), unsub: null, lastSync: 0,
+  get online() { return !!this.mode; },
+  get api() { return this.mode === 'api'; },
   async init() {
-    if (!window.claude || typeof window.claude.use !== 'function') return;
+    if (window.claude && typeof window.claude.use === 'function') return this.initArtifact();
+    this.mode = 'api';
+    try { const a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); if (a && a.id && a.token) { this.acct = a; this.uid = a.id; } } catch (e) { /* storage unavailable */ }
+    if (this.acct) { const me = await this.call('GET', '/me'); if (me.ok) await this.pullSave(); }
+    if (mode === 'menu') showMenu(menuView);
+  },
+  async initArtifact() {
     try {
       const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
       if (!db) return;
-      this.db = db; this.uid = user ? await user.id() : null;
+      this.mode = 'artifact'; this.db = db; this.uid = user ? await user.id() : null;
       this.watch();
       if (this.uid) {
         const snap = await db.doc(`data/users/${this.uid}/save`).get(), remote = snap.exists ? sanitizeProfile((snap.data() || {}).save) : null;
-        if (remote && remote.savedAt > P.savedAt) { if (mode === 'menu') { P = remote; try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } toast('계정에 저장된 기록을 불러왔습니다'); } }
+        if (remote && remote.savedAt > P.savedAt) { if (mode === 'menu') { adoptProfile(remote); toast('계정에 저장된 기록을 불러왔습니다'); } }
         else if (P.savedAt > 0) this.queue();
       }
       if (mode === 'menu') showMenu(menuView);
     } catch (e) { console.warn('cloud unavailable', e); }
   },
+  // ── account server ──
+  async call(method, path, body) {
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (this.acct) headers.Authorization = 'Bearer ' + this.acct.token;
+      const r = await fetch(API_BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401 && j.error === 'auth' && this.acct) { this.setAcct(null); toast('로그인이 풀렸습니다. 다시 로그인해 주세요'); }
+      return Object.assign({ ok: r.ok, status: r.status }, j);
+    } catch (e) { return { ok: false, status: 0, message: '서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.' }; }
+  },
+  setAcct(a) {
+    this.acct = a; this.uid = a ? a.id : null;
+    try { if (a) localStorage.setItem(AUTH_KEY, JSON.stringify(a)); else localStorage.removeItem(AUTH_KEY); } catch (e) { /* storage unavailable */ }
+  },
+  async signedIn(res) {
+    this.setAcct({ id: res.id, token: res.token });
+    if (!P.nick) P.nick = res.id;
+    await this.pullSave();
+  },
+  async pullSave() {
+    const s = await this.call('GET', '/save');
+    if (!s.ok) return;
+    const remote = s.data ? sanitizeProfile(s.data) : null;
+    if (remote && remote.savedAt > P.savedAt) { if (mode === 'menu') { adoptProfile(remote); toast('계정에 저장된 기록을 불러왔습니다'); } this.lastSync = s.at; }
+    else if (P.savedAt > 0) this.flush(); else this.lastSync = s.at;
+  },
+  async logout() { if (this.api && this.acct) this.call('POST', '/logout'); this.setAcct(null); },
+  // ── shared ──
   watch() {
     const wk = weekId(); this.week = wk;
     if (this.unsub) this.unsub();
     this.unsub = this.db.collection('rank').where('week', '==', wk).orderBy('score', 'desc').limit(50).onSnapshot(snap => {
-      this.board = snap.docs.map(d => cleanRec(d.id, d.data())).filter(Boolean); this.boardLoaded = true; this.boardErr = false;
+      this.board = snap.docs.map(d => cleanRec(d.id, d.data())).filter(Boolean); this.boardCount = this.board.length; this.boardLoaded = true; this.boardErr = false;
       if (mode === 'menu' && (menuView === 'rank' || menuView === 'hall')) fillBoard(wk);
     }, () => { this.boardErr = true; if (mode === 'menu') fillBoard(wk); });
   },
-  queue() { if (!this.db || !this.uid) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 1500); },
-  flush() { const body = { save: JSON.parse(JSON.stringify(P)), at: Date.now() }, ref = this.db.doc(`data/users/${this.uid}/save`); this.chain = this.chain.then(() => ref.set(body)).catch(e => console.warn('cloud save failed', e)); },
+  async refreshBoard(wk) {
+    if (!this.api) return;
+    const r = await this.call('GET', '/rank?week=' + encodeURIComponent(wk));
+    if (r.ok) { this.board = (r.rows || []).map(x => cleanRec(x.id, Object.assign({}, x, { week: r.week, nick: x.id }))).filter(Boolean); this.boardCount = r.count || this.board.length; this.boardLoaded = true; this.boardErr = false; }
+    else this.boardErr = true;
+    if (mode === 'menu' && (menuView === 'rank' || menuView === 'hall')) fillBoard(wk);
+  },
+  queue() { if (!this.uid) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 1500); },
+  flush() {
+    if (this.api) { this.chain = this.chain.then(() => this.call('PUT', '/save', { data: JSON.parse(JSON.stringify(P)) })).then(r => { if (r && r.ok) this.lastSync = r.at; }); return; }
+    const body = { save: JSON.parse(JSON.stringify(P)), at: Date.now() }, ref = this.db.doc(`data/users/${this.uid}/save`); this.chain = this.chain.then(() => ref.set(body)).catch(e => console.warn('cloud save failed', e));
+  },
   async submit(rec) {
-    if (!this.db || !this.uid || !rec) return { ok: false, reason: 'offline' };
+    if (!this.uid || !rec) return { ok: false, reason: 'offline' };
+    if (this.api) {
+      const r = await this.call('POST', '/rank', { week: rec.week, score: rec.score, round: rec.round, win: !!rec.win, kills: rec.kills });
+      return r.ok ? { ok: true, kept: !!r.kept, prev: r.prev } : { ok: false, reason: r.status === 401 ? 'auth' : 'error', message: r.message };
+    }
     try {
       const ref = this.db.collection('rank').doc(this.uid), cur = await ref.get(), d = cur.exists ? cur.data() || {} : {};
       const prev = d.week === rec.week ? Math.floor(num(d.score)) : -1;
@@ -1312,6 +1381,57 @@ const Cloud = {
     } catch (e) { return { ok: false, reason: e && e.code === 'invalid_argument' ? 'denied' : 'error' }; }
   },
 };
+function adoptProfile(remote) { P = remote; try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
+
+// ── account window: 로그인 · 회원가입 · 비밀번호 재설정 ──
+let acctBusy = false;
+const ruleList = (rules, v, cls) => `<ul class="hints ${cls}">${rules.map(([t, f]) => `<li class="${f(v) ? 'ok' : ''}">${t}</li>`).join('')}</ul>`;
+function showAccount(view, msg = '') {
+  if (!Cloud.api) return;
+  view = view || (Cloud.acct ? 'me' : 'login');
+  const tabs = view === 'login' || view === 'signup' ? `<div class="acc-tabs"><button class="${view === 'login' ? 'on' : ''}" data-act="acct" data-id="login">로그인</button><button class="${view === 'signup' ? 'on' : ''}" data-act="acct" data-id="signup">회원가입</button></div>` : '';
+  const err = `<p class="acc-msg" id="accErr" role="alert">${msg}</p>`, guest = '<p class="dim small">로그인하지 않아도 게스트로 계속 플레이할 수 있습니다 (지금처럼 이 브라우저에 저장). 주간 랭킹전과 명예의 전당은 로그인해야 참가합니다.</p>';
+  const field = (id, label, type, extra = '') => `<label class="acc-field"><span>${label}</span><input id="${id}" type="${type}" ${extra} autocomplete="off" autocapitalize="none" spellcheck="false"></label>`;
+  let h = '';
+  if (view === 'login') h = `<form id="accForm" data-kind="login" novalidate>${field('accId', '아이디', 'text', 'maxlength="16" autocomplete="username"')}${field('accPw', '비밀번호', 'password', 'maxlength="64" autocomplete="current-password"')}${err}<button class="btn primary" type="submit">로그인</button></form><button class="linkish" data-act="acct" data-id="reset">비밀번호를 잊었어요 (복구코드로 재설정)</button>${guest}`;
+  else if (view === 'signup') h = `<form id="accForm" data-kind="signup" novalidate>${field('accId', '아이디', 'text', 'maxlength="16" placeholder="예: hero_01"')}${ruleList(ID_RULES, '', 'id')}${field('accPw', '비밀번호', 'password', 'maxlength="64"')}${ruleList(PW_RULES, '', 'pw')}${field('accPw2', '비밀번호 확인', 'password', 'maxlength="64"')}<ul class="hints pw2"><li>비밀번호 일치</li></ul><p class="dim small">가입하면 게임 기록 저장을 위해 아이디와 게임 기록을 서버에 보관하는 데 동의하는 것으로 봅니다. 이메일 등 다른 개인정보는 받지 않습니다.</p>${err}<button class="btn primary" type="submit">가입하기</button></form>${guest}`;
+  else if (view === 'reset') h = `<form id="accForm" data-kind="reset" novalidate>${field('accId', '아이디', 'text', 'maxlength="16"')}${field('accCode', '복구코드', 'text', 'maxlength="14" placeholder="XXXX-XXXX-XXXX"')}${field('accPw', '새 비밀번호', 'password', 'maxlength="64"')}${ruleList(PW_RULES, '', 'pw')}${field('accPw2', '새 비밀번호 확인', 'password', 'maxlength="64"')}<ul class="hints pw2"><li>비밀번호 일치</li></ul>${err}<button class="btn primary" type="submit">재설정</button></form><button class="linkish" data-act="acct" data-id="login">← 로그인으로</button><p class="dim small">복구코드를 5번 틀리면 30분간 잠깁니다.</p>`;
+  else if (view === 'code') h = `<p>가입했습니다. <b>${Cloud.acct.id}</b> 로 로그인되었습니다.</p><p>아래 <b>복구코드</b>는 비밀번호를 잊었을 때 필요합니다. <b>지금 한 번만</b> 보여 드리니 꼭 적어 두거나 캡처해 두세요.</p><div class="code-box"><code id="accCodeOut">${msg}</code><button class="btn" data-act="acct-copy">복사</button></div><div class="actions"><button class="btn primary" data-act="acct-done" data-focus>적어 두었습니다</button></div>`;
+  else if (view === 'me') {
+    const ago = Cloud.lastSync ? Math.max(0, Math.round((Date.now() - Cloud.lastSync) / 60e3)) : null;
+    h = `<p class="acc-me"><b>${Cloud.acct.id}</b> 로 로그인됨</p><p class="good">✓ 서버에 저장됨${ago === null ? '' : ` · 마지막 저장 ${ago ? ago + '분 전' : '방금 전'}`}</p>${msg ? `<p class="good">${msg}</p>` : ''}<div class="actions"><button class="btn primary" data-act="acct-done" data-focus>확인</button></div><p class="dim small">기록은 자동으로 서버에 저장됩니다. 다른 기기에서 같은 아이디로 로그인하면 이어서 할 수 있어요.</p><button class="linkish right" data-act="acct-logout">로그아웃</button>`;
+  }
+  openModal(`<button class="mclose" data-act="acct-done" aria-label="닫기">✕</button><h2 class="acc-h">${view === 'reset' ? '비밀번호 재설정' : '계정'}</h2>${tabs}${h}`, 'acct');
+  const f = $('#accId'); if (f) f.focus();
+}
+function acctHints() {
+  const v = id => ($('#' + id) || {}).value || '';
+  const id = $('#accId'); if (id && id.value !== id.value.toLowerCase()) id.value = id.value.toLowerCase();
+  const set = (sel, rules, val) => { const ul = $(sel); if (ul) [...ul.children].forEach((li, i) => li.classList.toggle('ok', rules[i][1](val))); };
+  set('#modalCard .hints.id', ID_RULES, v('accId')); set('#modalCard .hints.pw', PW_RULES, v('accPw'));
+  const m = $('#modalCard .hints.pw2 li'); if (m) m.classList.toggle('ok', v('accPw2') !== '' && v('accPw2') === v('accPw'));
+}
+async function acctSubmit(kind) {
+  if (acctBusy) return;
+  const v = id => (($('#' + id) || {}).value || '').trim(), errEl = $('#accErr'), say = t => { if (errEl) errEl.textContent = t; };
+  const id = v('accId').toLowerCase(), pw = ($('#accPw') || {}).value || '';
+  if (kind === 'signup' || kind === 'reset') {
+    if (kind === 'signup' && !ID_RULES.every(([, f]) => f(id))) return say('아이디 규칙을 확인해 주세요.');
+    if (!PW_RULES.every(([, f]) => f(pw))) return say('비밀번호 규칙을 확인해 주세요.');
+    if (pw !== ($('#accPw2') || {}).value) return say('비밀번호 확인이 일치하지 않습니다.');
+  } else if (!id || !pw) return say('아이디와 비밀번호를 적어 주세요.');
+  acctBusy = true; say('잠시만요…'); $$('#accForm button').forEach(b => { b.disabled = true; });
+  const body = kind === 'reset' ? { id, code: v('accCode').toUpperCase(), pw } : { id, pw };
+  const r = await Cloud.call('POST', '/' + kind, body);
+  acctBusy = false;
+  if (!r.ok) { $$('#accForm button').forEach(b => { b.disabled = false; }); return say(r.message || '다시 시도해 주세요.'); }
+  await Cloud.signedIn(r);
+  const ab = $('.acct-btn'); if (ab) { ab.textContent = `${r.id} ✓`; ab.classList.add('in'); }
+  if (kind === 'signup') showAccount('code', r.code);
+  else showAccount('me', kind === 'reset' ? '비밀번호를 바꾸고 로그인했습니다 ✓' : '로그인했습니다 ✓');
+}
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#accForm')) acctHints(); });
+document.addEventListener('submit', e => { if (e.target.id === 'accForm') { e.preventDefault(); acctSubmit(e.target.dataset.kind); } });
 
 // ───────────────────────── boot ─────────────────────────
 // Hanji fibre and lacquer grain, generated once and handed to CSS as images.
