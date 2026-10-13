@@ -55,7 +55,9 @@ const fail = (req, status, code, msg) => json(req, { error: code, message: msg }
 
 // Simple fixed-window limiter per key, kept in D1.
 async function limited(env, key, max, windowMs) {
-  const now = Date.now(), row = await env.DB.prepare('SELECT n, until FROM hits WHERE k = ?').bind(key).first();
+  const now = Date.now();
+  if (Math.random() < 0.05) await env.DB.prepare('DELETE FROM hits WHERE until < ?').bind(now).run();
+  const row = await env.DB.prepare('SELECT n, until FROM hits WHERE k = ?').bind(key).first();
   if (!row || row.until < now) { await env.DB.prepare('INSERT OR REPLACE INTO hits (k, n, until) VALUES (?, 1, ?)').bind(key, now + windowMs).run(); return false; }
   if (row.n >= max) return true;
   await env.DB.prepare('UPDATE hits SET n = n + 1 WHERE k = ?').bind(key).run();
@@ -78,7 +80,9 @@ const int = (v, lo, hi) => (Number.isFinite(+v) ? Math.max(lo, Math.min(hi, Math
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
-    const url = new URL(req.url), path = url.pathname.replace(/\/+$/, '') || '/', ip = req.headers.get('CF-Connecting-IP') || 'x';
+    const url = new URL(req.url), path = url.pathname.replace(/\/+$/, '') || '/';
+    // IPs are only used, hashed, as keys for short-lived rate-limit counters.
+    const ip = (await sha256('bh:' + (req.headers.get('CF-Connecting-IP') || 'x'))).slice(0, 20);
     try {
       if (path === '/' ) return json(req, { ok: true, service: 'bonghwa-api', week: weekId() });
 
@@ -143,6 +147,13 @@ export default {
       if (path === '/me' && req.method === 'GET') {
         const s = await env.DB.prepare('SELECT at FROM saves WHERE user_id = ?').bind(uid).first();
         return json(req, { id: uid, savedAt: s ? s.at : 0 });
+      }
+      // 회원 탈퇴: 비밀번호를 한 번 더 확인하고 계정·세션·저장·랭킹을 모두 지운다.
+      if (path === '/delete' && req.method === 'POST') {
+        const b = await body(req), u = await env.DB.prepare('SELECT pw FROM users WHERE id = ?').bind(uid).first();
+        if (!u || !(await checkSecret(String(b.pw || ''), u.pw))) return fail(req, 401, 'pw', '비밀번호가 맞지 않습니다.');
+        await env.DB.batch(['rank', 'saves', 'sessions'].map(t => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(uid)).concat(env.DB.prepare('DELETE FROM users WHERE id = ?').bind(uid)));
+        return json(req, { ok: true });
       }
       if (path === '/logout' && req.method === 'POST') {
         await env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(await sha256((req.headers.get('Authorization') || '').slice(7))).run();

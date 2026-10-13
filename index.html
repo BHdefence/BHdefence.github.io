@@ -3,7 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>봉화대 사수</title>
+<title>봉화대 사수 · 밤의 봉수대를 지키는 도트 디펜스</title>
+<meta name="description" content="사방의 어둠에서 몰려오는 도깨비·산적·요괴로부터 봉수대를 40라운드 지키는 무료 웹 도트 타워 디펜스. 장터에서 무기를 사 모으고, 상성과 세트로 빌드를 짜고, 최종 보스 흑룡을 쓰러뜨리세요. 설치 없이 PC·휴대폰 브라우저에서 바로.">
+<meta name="keywords" content="봉화대 사수, 웹게임, 디펜스 게임, 타워 디펜스, 도트 게임, 무료 게임, 브라우저 게임, 봉수대, 도깨비, 로그라이크">
+<meta name="theme-color" content="#170f0c">
+<link rel="canonical" href="https://bhdefence.github.io/">
+<link rel="icon" type="image/png" sizes="64x64" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="봉화대 사수">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:title" content="봉화대 사수 · 다섯 홰의 불이 꺼지기 전에">
+<meta property="og:description" content="밤의 봉수대를 40라운드 지키는 무료 도트 디펜스. 설치 없이 브라우저에서 바로, 주간 랭킹전과 명예의 전당.">
+<meta property="og:url" content="https://bhdefence.github.io/">
+<meta property="og:image" content="https://bhdefence.github.io/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://bhdefence.github.io/og.png">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"봉화대 사수","url":"https://bhdefence.github.io/","image":"https://bhdefence.github.io/og.png","description":"밤의 봉수대를 사방의 적으로부터 40라운드 지키는 무료 웹 도트 타워 디펜스.","genre":["Tower defense","Roguelite"],"gamePlatform":["Web browser","PC","Mobile"],"inLanguage":"ko","applicationCategory":"Game","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"}}</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=East+Sea+Dokdo&family=Song+Myung&display=swap');
 /* Layout: the night battlefield sits in the middle; the market stall (상점) and the beacon's own wing (체력·천벌·봇짐)
@@ -223,6 +241,8 @@ table.mt td.x2 { color: #1a120c; background: var(--gold); }
 .acc-msg { min-height: 1.3em; margin: 0; font-size: 15px; color: var(--red); }
 .linkish { align-self: flex-start; padding: 0; background: none; border: 0; color: var(--blue); color: #2b4f8c; font-size: 15px; text-decoration: underline; }
 .linkish.right { align-self: flex-end; }
+.acc-links { display: flex; justify-content: space-between; }
+.mcard.acct .btn.danger { color: #fff2dc; background: linear-gradient(#7a2a1c, #5a1a10); }
 .mcard.acct p { margin: 0; } .mcard.acct .good { color: var(--green); text-align: center; font-size: 17px; } .acc-me { text-align: center; font-size: 20px; }
 .code-box { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border: 2px dashed var(--verm); background: rgba(255,252,240,.6); }
 .code-box code { flex: 1; font-family: var(--font); font-size: 28px; letter-spacing: 2px; color: var(--verm); text-align: center; -webkit-user-select: all; user-select: all; }
@@ -251,6 +271,7 @@ table.mt td.x2 { color: #1a120c; background: var(--gold); }
 .corner::before { content: ''; position: absolute; left: 50%; top: -6px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #e66, #812); box-shadow: 0 2px 2px rgba(0,0,0,.5); }
 .visits { position: absolute; right: 18px; bottom: 10px; z-index: 1; font-size: 15px; color: rgba(241,230,207,.65); text-shadow: 1px 1px 0 #000; font-variant-numeric: tabular-nums; }
 .visits b { font-weight: 400; color: var(--gold); }
+.credit a { color: inherit; } .credit a:hover { color: var(--gold); }
 .credit { position: absolute; left: 16px; right: 16px; bottom: 10px; font-size: 14px; color: rgba(241,230,207,.5); text-align: center; text-shadow: 1px 1px 0 #000; }
 .panel { position: absolute; left: 50%; top: 34px; bottom: 34px; width: min(1180px, calc(100% - 90px)); transform: translateX(-50%); display: flex; flex-direction: column; gap: 12px; padding: 20px 30px 26px; overflow: auto; border-radius: 2px; box-shadow: 0 18px 50px rgba(0,0,0,.75); }
 .roll { position: absolute; left: 50%; width: min(1210px, calc(100% - 60px)); height: 16px; transform: translateX(-50%); border-radius: 8px; background: linear-gradient(#2a180d, #8a5a34 40%, #b07a48 50%, #5a3a20 80%, #2a180d); box-shadow: 0 4px 8px rgba(0,0,0,.6); z-index: 1; }

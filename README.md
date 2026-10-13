@@ -39,6 +39,10 @@ npx http-server .   # 그다음 http://localhost:8080/
 
 조작: `1`~`8` 구매 · `R` 새로고침 · `Z` 천벌 · `B` 세트 · `D` 딜미터 · `G` 사거리 · `H` 상성표 · `Tab` 배속 · `Space` 멈춤. 휴대폰은 가로 화면에서 상점 칸을 두 번 눌러 삽니다.
 
+## 공개 페이지
+
+- `about.html` 게임 소개, `privacy.html` 개인정보처리방침, `robots.txt`·`sitemap.xml` 검색 등록용, `og.png` 링크 미리보기 그림, `favicon.png`·`apple-touch-icon.png`·`icon-512.png` 아이콘
+
 ## 파일
 
 - `index.html`: 화면 구성과 스타일

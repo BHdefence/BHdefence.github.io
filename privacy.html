@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>개인정보처리방침 · 봉화대 사수</title>
+<meta name="description" content="봉화대 사수가 어떤 정보를 어디에 저장하고 어떻게 지울 수 있는지 안내합니다.">
+<link rel="canonical" href="https://bhdefence.github.io/privacy.html">
+<link rel="icon" type="image/png" sizes="64x64" href="favicon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=East+Sea+Dokdo&family=Song+Myung&display=swap">
+<link rel="stylesheet" href="page.css">
+</head>
+<body>
+<main>
+  <div class="top"><a href="./">← 게임으로</a><a href="about.html">게임 소개</a></div>
+  <h1>개인정보처리방침</h1>
+  <p class="date">시행일 2026년 10월 13일</p>
+  <p>봉화대 사수(https://bhdefence.github.io/, 이하 "게임")는 이름·이메일·전화번호를 받지 않습니다. 이 문서는 게임을 하면서 어떤 정보가 어디에 저장되고 어떻게 지울 수 있는지 알려 드립니다.</p>
+
+  <h2>1. 게스트로 할 때: 내 기기에만 남는 정보</h2>
+  <p>진행(기억 조각, 수호 기억, 이긴 난이도, 이 기기 랭킹 기록, 소리 설정)은 브라우저 저장소(localStorage)에만 저장되며 서버로 보내지 않습니다. 게임 설정의 "모든 진행 지우기"나 브라우저의 사이트 데이터 삭제로 언제든 지울 수 있습니다.</p>
+
+  <h2>2. 회원가입하면 서버에 저장하는 정보</h2>
+  <div class="tbl"><table>
+    <tr><th>항목</th><th>쓰는 곳</th><th>보관</th></tr>
+    <tr><td>아이디 (영문)</td><td>로그인, 명예의 전당 표시</td><td>탈퇴할 때까지</td></tr>
+    <tr><td>비밀번호</td><td>로그인 확인. 원문은 저장하지 않고 PBKDF2 해시로만 저장</td><td>탈퇴할 때까지</td></tr>
+    <tr><td>복구코드</td><td>비밀번호 재설정. 해시로만 저장</td><td>탈퇴할 때까지</td></tr>
+    <tr><td>게임 진행</td><td>다른 기기에서 이어서 하기</td><td>탈퇴할 때까지</td></tr>
+    <tr><td>주간 랭킹 기록 (점수, 도달 라운드, 처치 수)</td><td>명예의 전당</td><td>탈퇴할 때까지</td></tr>
+    <tr><td>로그인 토큰</td><td>로그인 유지. 브라우저와 서버에 보관, 서버에는 해시로 저장</td><td>로그아웃 또는 180일</td></tr>
+  </table></div>
+  <p>명예의 전당에는 아이디와 랭킹 기록이 누구에게나 보입니다. 다른 정보는 공개하지 않습니다.</p>
+
+  <h2>3. 방문 수와 부정 사용 방지</h2>
+  <p>첫 화면을 열면 날짜별 방문 수 하나만 1 올라갑니다(한 브라우저당 하루 한 번). 가입·로그인·방문 집계를 지나치게 반복하는 것을 막기 위해 접속 IP 주소를 알아볼 수 없는 값(해시)으로 바꿔 짧은 기간(최대 하루) 횟수 세기에만 쓰고, 기간이 지나면 지웁니다. IP 주소를 계정과 연결해 저장하지 않습니다.</p>
+
+  <h2>4. 처리 위탁과 저장 위치</h2>
+  <ul>
+    <li>게임 화면: GitHub Pages (GitHub, Inc.)</li>
+    <li>계정·저장·랭킹 서버와 데이터베이스: Cloudflare Workers, Cloudflare D1 (Cloudflare, Inc.). 데이터는 아시아·태평양 지역에 저장됩니다.</li>
+    <li>글꼴: Google Fonts (Google LLC). 글꼴을 받을 때 브라우저가 Google에 접속합니다.</li>
+  </ul>
+  <p>광고·분석용 쿠키나 추적 도구는 쓰지 않습니다.</p>
+
+  <h2>5. 지우기와 탈퇴</h2>
+  <p>게임 첫 화면 왼쪽 위 아이디 버튼 → <b>회원 탈퇴</b>에서 비밀번호를 확인하면 아이디, 저장된 진행, 랭킹 기록, 로그인 토큰이 서버에서 바로 지워집니다. 탈퇴 뒤에는 되돌릴 수 없습니다. 비밀번호와 복구코드를 모두 잊어 탈퇴할 수 없을 때는 아래로 문의해 주세요.</p>
+
+  <h2>6. 만 14세 미만</h2>
+  <p>게임은 실명이나 연락처를 받지 않습니다. 만 14세 미만이라면 보호자와 함께 이용해 주세요.</p>
+
+  <h2>7. 문의와 변경</h2>
+  <p>문의는 <a href="https://github.com/BHdefence/BHdefence.github.io/issues">GitHub 이슈</a>로 남겨 주세요. 이 방침을 바꾸면 이 페이지의 시행일을 고쳐 알립니다.</p>
+</main>
+<footer>© BHdefence · <a href="./">봉화대 사수</a></footer>
+</body>
+</html>

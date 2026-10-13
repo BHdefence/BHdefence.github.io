@@ -1103,7 +1103,7 @@ function showMenu(view = 'title') {
       </nav></div>
       <aside class="corner paper"><div><span class="dim">기억 조각</span> <b class="gold">${fmt(P.shards)}</b></div><div><span class="dim">이긴 난이도</span> ${wins.length ? wins.join(' · ') : '아직 없음'}</div><div><span class="dim">플레이</span> ${fmt(P.runs)}판</div></aside>
       <div class="visits" id="visits">${visitHtml()}</div>
-      <footer class="credit">글꼴 Galmuri (SIL OFL 1.1) · 1~8 구매 · R 새로고침 · Z 천벌 · Tab 배속 · Space 멈춤</footer>`;
+      <footer class="credit"><a href="about.html">게임 소개</a> · <a href="privacy.html">개인정보처리방침</a> · 글꼴 Galmuri (SIL OFL 1.1)</footer>`;
   } else if (view === 'select') renderSelect();
   else if (view === 'perks') renderPerks();
   else if (view === 'hall') renderHall();
@@ -1411,9 +1411,11 @@ function showAccount(view, msg = '') {
   else if (view === 'code') h = `<p>가입했습니다. <b>${Cloud.acct.id}</b> 로 로그인되었습니다.</p><p>아래 <b>복구코드</b>는 비밀번호를 잊었을 때 필요합니다. <b>지금 한 번만</b> 보여 드리니 꼭 적어 두거나 캡처해 두세요.</p><div class="code-box"><code id="accCodeOut">${msg}</code><button class="btn" data-act="acct-copy">복사</button></div><div class="actions"><button class="btn primary" data-act="acct-done" data-focus>적어 두었습니다</button></div>`;
   else if (view === 'me') {
     const ago = Cloud.lastSync ? Math.max(0, Math.round((Date.now() - Cloud.lastSync) / 60e3)) : null;
-    h = `<p class="acc-me"><b>${Cloud.acct.id}</b> 로 로그인됨</p><p class="good">✓ 서버에 저장됨${ago === null ? '' : ` · 마지막 저장 ${ago ? ago + '분 전' : '방금 전'}`}</p>${msg ? `<p class="good">${msg}</p>` : ''}<div class="actions"><button class="btn primary" data-act="acct-done" data-focus>확인</button></div><p class="dim small">기록은 자동으로 서버에 저장됩니다. 다른 기기에서 같은 아이디로 로그인하면 이어서 할 수 있어요.</p><button class="linkish right" data-act="acct-logout">로그아웃</button>`;
+    h = `<p class="acc-me"><b>${Cloud.acct.id}</b> 로 로그인됨</p><p class="good">✓ 서버에 저장됨${ago === null ? '' : ` · 마지막 저장 ${ago ? ago + '분 전' : '방금 전'}`}</p>${msg ? `<p class="good">${msg}</p>` : ''}<div class="actions"><button class="btn primary" data-act="acct-done" data-focus>확인</button></div><p class="dim small">기록은 자동으로 서버에 저장됩니다. 다른 기기에서 같은 아이디로 로그인하면 이어서 할 수 있어요.</p><div class="acc-links"><button class="linkish" data-act="acct" data-id="delete">회원 탈퇴</button><button class="linkish" data-act="acct-logout">로그아웃</button></div>`;
+  } else if (view === 'delete') {
+    h = `<p><b>${Cloud.acct.id}</b> 계정을 지웁니다. 서버에 저장된 진행과 명예의 전당 기록도 함께 지워지며 되돌릴 수 없습니다. 이 브라우저의 진행은 게스트로 남습니다.</p><form id="accForm" data-kind="delete" novalidate>${field('accPw', '비밀번호 확인', 'password', 'maxlength="64" autocomplete="current-password"')}${err}<button class="btn danger" type="submit">계정 지우기</button></form><button class="linkish" data-act="acct" data-id="me">← 돌아가기</button>`;
   }
-  openModal(`<button class="mclose" data-act="acct-done" aria-label="닫기">✕</button><h2 class="acc-h">${view === 'reset' ? '비밀번호 재설정' : '계정'}</h2>${tabs}${h}`, 'acct');
+  openModal(`<button class="mclose" data-act="acct-done" aria-label="닫기">✕</button><h2 class="acc-h">${view === 'reset' ? '비밀번호 재설정' : view === 'delete' ? '회원 탈퇴' : '계정'}</h2>${tabs}${h}`, 'acct');
   const f = $('#accId'); if (f) f.focus();
 }
 function acctHints() {
@@ -1431,6 +1433,12 @@ async function acctSubmit(kind) {
     if (kind === 'signup' && !ID_RULES.every(([, f]) => f(id))) return say('아이디 규칙을 확인해 주세요.');
     if (!PW_RULES.every(([, f]) => f(pw))) return say('비밀번호 규칙을 확인해 주세요.');
     if (pw !== ($('#accPw2') || {}).value) return say('비밀번호 확인이 일치하지 않습니다.');
+  } else if (kind === 'delete') {
+    if (!pw) return say('비밀번호를 적어 주세요.');
+    acctBusy = true; say('지우는 중입니다…');
+    const r = await Cloud.call('POST', '/delete', { pw }); acctBusy = false;
+    if (!r.ok) return say(r.message || '다시 시도해 주세요.');
+    Cloud.setAcct(null); closeModal(); toast('계정을 지웠습니다. 게스트로 계속합니다'); if (mode === 'menu') showMenu(menuView); return;
   } else if (!id || !pw) return say('아이디와 비밀번호를 적어 주세요.');
   acctBusy = true; say('잠시만요…'); $$('#accForm button').forEach(b => { b.disabled = true; });
   const body = kind === 'reset' ? { id, code: v('accCode').toUpperCase(), pw } : { id, pw };
