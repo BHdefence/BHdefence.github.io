@@ -13,6 +13,7 @@ const INV_MAX = 24, TOWER_R = 16;
 const slotsUsed = () => new Set(R.items.map(i => i.id)).size;
 const owned = id => R.items.reduce((n, i) => n + (i.id === id), 0);
 const bagFullFor = id => slotsUsed() >= INV_MAX && !owned(id);
+const stackCapped = id => ITEM[id].cat !== 'weapon' && owned(id) >= STACK_MAX;
 
 // ───────────────────────── profile (persistent) ─────────────────────────
 const SAVE_KEY = 'bonghwa-v1';
@@ -237,18 +238,21 @@ function computeStats() {
     freeRerolls: BASE.freeRerolls + perkRun('reroll'), typeCount: {}, elemCount: {}, typeStep: {}, elemStep: {}, thornElems: [],
   };
   // Sets count DIFFERENT items: stacking copies of one weapon (×2, ×3) adds its firepower but not set progress.
-  const counted = new Set();
+  // Other items lose strength as they stack (stackEff); interest never stacks, the best one applies.
+  const counted = new Set(), copies = {};
   for (const it of R.items) {
     const d = ITEM[it.id], first = !counted.has(it.id); counted.add(it.id);
     if (d.cat === 'weapon') { if (first) s.typeCount[d.type] = (s.typeCount[d.type] || 0) + 1; }
     else {
-      if (d.dmg) s.dmg += d.dmg;
-      if (d.typeDmg) for (const k in d.typeDmg) s.typeDmg[k] += d.typeDmg[k];
-      if (d.elemPow) for (const k in d.elemPow) s.elemPow[k] += d.elemPow[k];
-      s.aspd += d.aspd || 0; s.range += d.range || 0; s.crit += d.crit || 0; s.critMul += d.critDmg || 0;
-      s.income += d.income || 0; s.bounty += d.bounty || 0; s.interest += d.interest || 0; s.interestCap += d.interestCap || 0;
-      s.maxHp += d.maxHp || 0; s.regen += d.regen || 0; s.shield += d.shield || 0; s.dr += d.dr || 0;
-      s.thorn += d.thorn || 0; s.thornPow += d.thornPow || 0;
+      const m = stackEff(copies[it.id] = (copies[it.id] ?? -1) + 1), a = v => (v || 0) * m;
+      s.dmg += a(d.dmg);
+      if (d.typeDmg) for (const k in d.typeDmg) s.typeDmg[k] += a(d.typeDmg[k]);
+      if (d.elemPow) for (const k in d.elemPow) s.elemPow[k] += a(d.elemPow[k]);
+      s.aspd += a(d.aspd); s.range += a(d.range); s.crit += a(d.crit); s.critMul += a(d.critDmg);
+      s.income += a(d.income); s.bounty += a(d.bounty);
+      if ((d.interest || 0) > s.interest) { s.interest = d.interest; s.interestCap = d.interestCap; }
+      s.maxHp += Math.round(a(d.maxHp)); s.regen += a(d.regen); s.shield += Math.round(a(d.shield)); s.dr += a(d.dr);
+      s.thorn += a(d.thorn); s.thornPow += a(d.thornPow);
       if (d.cat === 'thorn' && d.elem) s.thornElems.push(d.elem);
     }
     if (first) for (const e of [d.elem, d.elem2]) if (e) s.elemCount[e] = (s.elemCount[e] || 0) + 1;
@@ -273,7 +277,7 @@ function startRound(r) {
   R.shieldNow = R.S.shield; R.freeRerolls = R.S.freeRerolls; R.paidRerolls = 0; R.rerollIdx = 0; rollShop();
   R.spawnQ = genSpawns(r);
   const boss = MID_BOSS[r];
-  if (boss) { banner(`${r} 라운드`, `${FOES[boss].name} 출현`, 'boss', '경보'); Sfx.play('boss'); bumpField(); }
+  if (boss) { banner(`${r} 라운드`, `${FOES[boss].name} 출현${R.diff.trait ? ` · ${BOSS_TRAITS[R.diff.trait].name}` : ''}`, 'boss', '경보'); Sfx.play('boss'); bumpField(); }
   else if (TREASURE_ROUNDS.includes(r)) { banner(`${r} 라운드`, '보물 도깨비가 나타났습니다', 'gold', '보물'); Sfx.play('gift'); }
   else { banner(`${r} 라운드`, `이번 주력 ${ARMORS[R.armorSeq[r]].name}`); Sfx.play('horn'); }
   renderShop(); renderHud(true);
@@ -292,7 +296,7 @@ function genSpawns(r) {
 function startFinal() {
   R.final = true; R.round = ROUNDS + 1; R.t = Infinity; R.shieldNow = R.S.shield; R.finalAt = R.time;
   spawnFoe('dragon', 0, 0.5);
-  banner('최종 결전', '흑룡이 깨어났습니다', 'boss', '결전'); Sfx.play('boss'); bumpField(); renderHud(true);
+  banner('최종 결전', `흑룡이 깨어났습니다${R.diff.trait ? ` · ${BOSS_TRAITS[R.diff.trait].name}` : ''}`, 'boss', '결전'); Sfx.play('boss'); bumpField(); renderHud(true);
 }
 function spawnFoe(kind, side, along, at) {
   const d = FOES[kind], r = Math.min(R.round, ROUNDS);
@@ -335,6 +339,7 @@ function buy(slot) {
   if (!R || R.state !== 'run' || R.gift) return;
   const s = R.shop[slot]; if (!s || s.sold) return;
   const price = Math.round(priceOf(s.id) * (R.halfOff ? 0.5 : 1));
+  if (stackCapped(s.id)) { toast(`같은 물건은 ${STACK_MAX}개까지 가질 수 있습니다`); Sfx.play('deny', 200); return; }
   if (bagFullFor(s.id)) { toast('가방이 가득 찼습니다. 물건을 하나 되파세요'); Sfx.play('deny', 200); return; }
   if (R.gold < price) { Sfx.play('deny', 200); flashGold(); return; }
   const ico = $(`#shop .card[data-slot="${slot}"] .ico`), from = ico ? rectIn(ico) : null;
@@ -385,8 +390,9 @@ function nearestN(range, n) { return R.enemies.filter(e => e.hp > 0 && onField(e
 function nearOf(e0, radius, exclude) { let best = null, bd = radius; for (const e of R.enemies) { if (e.hp <= 0 || e === e0 || (exclude && exclude.has(e))) continue; const d = Math.hypot(e.x - e0.x, e.y - e0.y); if (d < bd) { bd = d; best = e; } } return best; }
 
 function calcDmg(def, e) {
-  const S = R.S, t = def.type; let d = def.dmg * (1 + S.dmg + S.typeDmg[t]), strong = false;
-  if (t === 'chaos') d *= S.chaosMin + Math.random() * (2 - S.chaosMin);
+  const S = R.S, t = def.type, bt = e.boss && BOSS_TRAITS[R.diff.trait]; let d = def.dmg * (1 + S.dmg + S.typeDmg[t]), strong = false;
+  if (bt) { if (bt.half === t) d *= 0.5; if (e.resistT > 0 && e.resist === t) d *= 0.3; }
+  if (t === 'chaos') d *= bt && R.diff.trait === 'break' ? 0.5 + Math.random() * 0.5 : S.chaosMin + Math.random() * (2 - S.chaosMin);
   else if (TYPES[t].strong === e.armor) { d *= 2; strong = true; }
   const critChance = S.crit + (def.crit || 0) + (t === 'arrow' && S.typeStep.arrow >= 2 ? 0.08 : 0), crit = Math.random() < critChance;
   if (crit) d *= S.critMul;
@@ -453,7 +459,7 @@ function stepShot(s, dt) {
   }
   if (s.straight) {
     s.x += s.vx * dt; s.y += s.vy * dt; s.left -= Math.hypot(s.vx, s.vy) * dt;
-    for (const e of R.enemies) { if (e.hp <= 0 || s.hit.has(e)) continue; if (Math.hypot(e.x - s.x, e.y - 4 - s.y) < e.r + 2) { s.hit.add(e); hitWith(s.w, s.def, e, s.mult); s.mult *= 0.9; if (--s.pierce < 0) return false; } }
+    for (const e of R.enemies) { if (e.hp <= 0 || s.hit.has(e)) continue; if (Math.hypot(e.x - s.x, e.y - 4 - s.y) < e.r + 2) { s.hit.add(e); hitWith(s.w, s.def, e, s.mult); s.mult *= 0.9; if (e.boss && R.diff.trait === 'wind') return false; if (--s.pierce < 0) return false; } }
     return s.left > 0 && s.x > -10 && s.x < FW + 10 && s.y > -10 && s.y < FH + 10;
   }
   const tg = s.tg && s.tg.hp > 0 ? s.tg : null; if (tg) { s.tx = tg.x; s.ty = tg.y - 4; }
@@ -495,13 +501,14 @@ function chain(e0, def, base, n, w) {
   if (pts.length > 1) R.fx.push({ k: 'bolt', pts, t: 0, life: 0.18, c: def.elem === 'bolt' || def.type === 'charm' ? '#ffe46b' : '#ff9ad0' });
 }
 function applyElem(e, el, d, w) {
-  if (e.hp <= 0) return; const S = R.S, st = S.elemStep[el];
+  if (e.hp <= 0) return; const S = R.S, st = S.elemStep[el], tr = e.boss ? R.diff.trait : null;
+  if ((el === 'fire' && tr === 'fire') || (el === 'frost' && tr === 'pure')) return; // 불 먹는 몸 · 부정 타지 않음
   if (el === 'fire') { const dps = d * 0.22 * (1 + S.elemPow.fire + [0, 0.5, 1.2][st]); if (dps >= e.burnDps || e.burnT <= 0) { e.burnDps = dps; e.burnSrc = w; } e.burnT = 3; }
   else if (el === 'frost') {
     e.slowT = 2 * (1 + S.elemPow.frost); e.slowF = Math.max(e.slowF, 0.3 + [0, 0.1, 0.2][st]);
     if (st >= 2 && Math.random() < 0.12) e.freezeT = Math.max(e.freezeT, e.boss ? 0.3 : 1);
   } else if (el === 'poison') {
-    const cap = [8, 12, 16][st]; e.pStacks = Math.min(cap, e.pStacks + 1);
+    const cap = [8, 12, 16][st] * (tr === 'break' ? 0.5 : 1); e.pStacks = Math.min(cap, e.pStacks + 1);
     const dps = d * 0.07 * (1 + S.elemPow.poison) * (st >= 2 ? 1.4 : 1); if (dps >= e.pDps) { e.pDps = dps; e.pSrc = w; } e.poisonT = 4;
   }
 }
@@ -510,8 +517,18 @@ function damage(e, d, w, crit, strong, silent) {
   e.hp -= d; e.flash = 0.06;
   if (!silent && R.fx.length < 380 && (crit || Math.random() < 0.35)) R.fx.push({ k: 'hit', x: e.x + rand(-2, 2), y: e.y - e.r - rand(0, e.r), t: 0, life: 0.12 });
   if (w) w.dealt += d; else R.thornDealt += d;
+  if (e.boss && w && R.diff.trait === 'adapt') { const t = ITEM[w.id].type; e.taken = e.taken || {}; e.taken[t] = (e.taken[t] || 0) + d; }
   if (!silent && (R.nums.length < 70 || crit)) R.nums.push({ x: e.x + rand(-3, 3), y: e.y - e.r * 2 - 4, v: d, c: crit ? '#ff6a4a' : strong ? '#f3c94a' : '#f6f1e7', s: crit ? 2 : 1, t: 0 });
   if (e.hp <= 0) kill(e, w);
+}
+// 적응하는 원귀: every 20 s the boss resists, for 10 s, whichever weapon type hurt it most since the last change
+function adaptBoss(e, dt) {
+  if (e.resistT > 0 && (e.resistT -= dt) <= 0) e.resist = null;
+  if ((e.adaptT = (e.adaptT ?? 20) - dt) > 0) return;
+  e.adaptT = 20; const top = Object.entries(e.taken || {}).sort((a, b) => b[1] - a[1])[0]; e.taken = {};
+  if (!top) return;
+  e.resist = top[0]; e.resistT = 10;
+  banner(`${e.d.name}의 적응`, `10초 동안 ${TYPES[e.resist].name} 피해 70% 저항`, 'boss');
 }
 function kill(e, w) {
   const S = R.S;
@@ -562,6 +579,7 @@ function updateEnemies(dt) {
   for (const e of R.enemies) {
     if (e.hp <= 0) continue;
     e.life += dt; if (e.flash > 0) e.flash -= dt; if (e.lunge > 0) e.lunge -= dt;
+    if (e.boss && R.diff.trait === 'adapt') adaptBoss(e, dt);
     // damage over time
     let dot = 0;
     if (e.burnT > 0) { e.burnT -= dt; dot += e.burnDps * dt; if (e.burnSrc) e.burnSrc.dealt += e.burnDps * dt; }
@@ -658,7 +676,7 @@ function takeGift(i) {
   else if (g.id === 'chest') {
     const tier = giftTier(r), rng = rngFor('chest', r), c = ITEMS.filter(it => it.tier === tier && it.cat !== 'thorn');
     const id = c[(rng() * c.length) | 0].id;
-    if (!bagFullFor(id)) { addItem(id); toast(`보물 상자에서 ${josa(ITEM[id].name, '이', '가')} 나왔습니다`); } else { R.gold += priceOf(id); toast('가방이 가득 차서 값으로 받았습니다'); }
+    if (!bagFullFor(id) && !stackCapped(id)) { addItem(id); toast(`보물 상자에서 ${josa(ITEM[id].name, '이', '가')} 나왔습니다`); } else { R.gold += priceOf(id); toast('더 가질 수 없는 물건이라 값으로 받았습니다'); }
   } else if (g.id === 'gamtu') { R.bonusDmg += 0.1; refreshStats(); }
   R.gift = null; closeModal(); renderShop(); renderInv(); renderRes();
 }
@@ -832,6 +850,7 @@ function drawFoe(e) {
   if (e.stunT > 0) for (let i = 0; i < 2; i++) pr(g, x + spr.w / 2 + Math.round(Math.cos(clock * 8 + i * 3) * 4), y - 2, 1, 1, '#f3c94a');
   if (!e.boss && e.hp < e.max) { const w = Math.max(6, spr.w - 2); pr(g, Math.round(e.x - w / 2) - 1, y - 4, w + 2, 3, 'rgba(10,6,6,0.75)'); pr(g, Math.round(e.x - w / 2), y - 3, Math.max(1, Math.round(w * e.hp / e.max)), 1, e.hp / e.max < 0.35 ? '#ff5a3a' : '#e8c35a'); }
   if (e.d.treasure && Math.floor(clock * 6) % 2) pr(g, x + spr.w - 3, y + 2, 1, 1, '#fff2a8');
+  if (e.resistT > 0) { const c = TYPES[e.resist].color; pring(g, e.x, y - 6, 4, c); pr(g, e.x - 1, y - 7, 3, 3, c); }
 }
 function drawShot(s) {
   if (s.delay > 0) return;
@@ -1079,7 +1098,7 @@ function renderShop() {
     if (s.sold) { b.classList.add('sold'); b.disabled = true; b.innerHTML = `<span class="soldmark">팔림</span><span class="key">${i + 1}</span>`; box.append(b); return; }
     const d = ITEM[s.id], price = Math.round(priceOf(s.id) * (R.halfOff ? 0.5 : 1));
     b.style.setProperty('--tier', TIERS[d.tier].color);
-    b.innerHTML = `<img class="ico" alt="" src="${iconFor(d)}"><span class="nm">${d.name}</span><span class="sub"><span class="pr">${fmt(price)}냥</span><span class="tg">${itemTag(d)}</span></span>${owned(s.id) ? `<span class="own">×${owned(s.id)}→${owned(s.id) + 1}</span>` : ''}<span class="key">${i + 1}</span>`;
+    b.innerHTML = `<img class="ico" alt="" src="${iconFor(d)}"><span class="nm">${d.name}</span><span class="sub"><span class="pr">${fmt(price)}냥</span><span class="tg">${itemTag(d)}</span></span>${stackCapped(s.id) ? '<span class="own">최대</span>' : owned(s.id) ? `<span class="own">×${owned(s.id)}→${owned(s.id) + 1}</span>` : ''}<span class="key">${i + 1}</span>`;
     b.dataset.item = s.id; box.append(b);
   });
   renderRes();
@@ -1111,7 +1130,7 @@ function openItemTip(id) {
   const grp = R.items.filter(x => x.id === id); if (!grp.length) return;
   const it = grp[grp.length - 1], n = grp.length; selected = id; renderInv();
   const cell = $(`#inv .slot[data-item="${id}"]`) || $('#invCount');
-  showTip(cell, ITEM[id], `${n > 1 ? `<p class="gold">보유 ×${n} · 한 개씩 되팝니다</p>` : ''}<div class="actions"><button class="btn danger" data-act="sell" data-id="${it.uid}">되팔기 +${fmt(priceOf(id) * (BASE.sellRate + perkRun('sell') * 0.1))}냥</button><button class="btn" data-act="untip">닫기</button></div>`);
+  showTip(cell, ITEM[id], `${n > 1 ? `<p class="gold">보유 ×${n} · 한 개씩 되팝니다${ITEM[id].cat === 'weapon' ? '' : ` · 겹친 효과 ${STACK_EFF.slice(0, Math.min(n, 4)).map(v => v * 100).join('·')}%${n > 4 ? '…' : ''}`}</p>` : ''}<div class="actions"><button class="btn danger" data-act="sell" data-id="${it.uid}">되팔기 +${fmt(priceOf(id) * (BASE.sellRate + perkRun('sell') * 0.1))}냥</button><button class="btn" data-act="untip">닫기</button></div>`);
 }
 function invMatch(d, k) { if (k === 'all') return true; if (k === 'thorn') return d.cat === 'thorn'; if (k === 'etc') return d.cat !== 'weapon' && d.cat !== 'thorn'; return d.cat === 'weapon' && d.type === k; }
 
@@ -1128,6 +1147,8 @@ function itemStats(d) {
   }
   return out;
 }
+// For a non-weapon item already owned: how strong the next copy will be.
+const stackNote = d => { if (!R || d.cat === 'weapon') return ''; const n = owned(d.id); if (!n) return ''; return n >= STACK_MAX ? `<p class="hint">최대 ${STACK_MAX}개까지 · 더 살 수 없습니다</p>` : `<p class="hint">보유 ×${n} · 다음 것은 효과 ${Math.round(stackEff(n) * 100)}%</p>`; };
 function showTip(el, d, extra = '') {
   const tier = TIERS[d.tier];
   tip.innerHTML = `<div class="t-h"><img src="${iconFor(d)}" alt=""><div><div class="t-nm" style="color:${tier.color}">${d.name}</div><div class="t-tg">${tier.name} · ${itemTag(d)}</div></div></div>${itemStats(d).map(s => `<p>${s}</p>`).join('')}<p class="t-d">${d.desc || ''}</p>${extra}`;
@@ -1145,7 +1166,7 @@ document.addEventListener('pointerover', e => {
   const el = e.target.closest('[data-item]'); if (!el || !R) return;
   // A bag item opened by click keeps its sell tooltip; hover tips wait until it is closed.
   if (selected !== null || (!tip.hidden && tip.querySelector('[data-act="sell"]'))) return;
-  const d = ITEM[el.dataset.item]; showTip(el, d, el.dataset.uid ? `<p class="hint">눌러서 되팔기</p>` : `<p class="hint">눌러서 구매 · 숫자키 ${+el.dataset.slot + 1}</p>`);
+  const d = ITEM[el.dataset.item]; showTip(el, d, el.dataset.uid ? `<p class="hint">눌러서 되팔기</p>` : `${stackNote(d)}<p class="hint">눌러서 구매 · 숫자키 ${+el.dataset.slot + 1}</p>`);
 });
 document.addEventListener('pointerout', e => { const el = e.target.closest('[data-item]'); if (el && !el.contains(e.relatedTarget) && selected === null) hideTip(); });
 
@@ -1354,7 +1375,7 @@ function codexShop() {
       <h3>값</h3><table class="rank"><tbody>${TIERS.map((t, i) => `<tr><td style="color:${TIER_INK[i]}">${t.name}</td><td class="r">${fmt(t.price)}냥</td><td class="r dim">되팔면 ${Math.round((BASE.sellRate + perkL('sell') * 0.1) * 100)}%</td></tr>`).join('')}</tbody></table></div>
     <div><h3>라운드별 등급 확률${perkL('luck') ? ` <small class="dim">(눈썰미 ${perkL('luck')}단계 적용)</small>` : ''}</h3><table class="rank"><thead><tr><th>라운드</th>${TIERS.map((t, i) => `<th class="r" style="color:${TIER_INK[i]}">${t.name}</th>`).join('')}</tr></thead><tbody>${tierRows}</tbody></table>
       <h3>예시</h3><table class="rank"><thead><tr><th>이런 물건이</th><th class="r">한 칸에</th><th class="r">상점 한 번에</th></tr></thead><tbody>${ex('weapon', 0, 1, '1~5라운드 · 특정 일반 무기')}${ex('weapon', 2, 13, '13~20라운드 · 특정 희귀 무기')}${ex('weapon', 3, 31, '31라운드~ · 특정 전설 무기')}<tr><td>31라운드~ · 전설이 하나라도</td><td class="r">-</td><td class="r">${anyLegend(31)}</td></tr></tbody></table></div></div>
-    <ul class="rules"><li>새로고침은 라운드마다 무료 ${BASE.freeRerolls + perkL('reroll')}번, 그다음은 (15 + 라운드×4)냥부터 할 때마다 50%씩 비싸집니다.</li><li>수호 기억 <b>눈썰미</b>는 희귀·전설이 뜨는 비율을 단계마다 15%씩 올립니다.</li><li>같은 물건을 또 사면 봇짐 한 칸에 ×2, ×3으로 겹칩니다. 봇짐 24칸은 물건 종류 수로 셉니다.</li></ul>`;
+    <ul class="rules"><li>새로고침은 라운드마다 무료 ${BASE.freeRerolls + perkL('reroll')}번, 그다음은 (15 + 라운드×4)냥부터 할 때마다 50%씩 비싸집니다.</li><li>수호 기억 <b>눈썰미</b>는 희귀·전설이 뜨는 비율을 단계마다 15%씩 올립니다.</li><li>같은 물건을 또 사면 봇짐 한 칸에 ×2, ×3으로 겹칩니다. 봇짐 24칸은 물건 종류 수로 셉니다.</li><li>무기는 겹친 만큼 모두 쏩니다. 무기가 아닌 물건은 ${STACK_MAX}개까지 겹치고, 겹칠수록 효과가 줄어듭니다: 1개째 100%, 2개째 60%, 3개째 40%, 4개째부터 30%.</li><li>전당포·환전상 이자는 겹치지 않고 가장 좋은 하나만 적용됩니다.</li></ul>`;
 }
 function codexRounds() {
   const foes = ['runner', 'wolf', 'wisp', 'grunt', 'bandit', 'guard', 'gangsi', 'hareubang', 'giant'];
@@ -1367,7 +1388,7 @@ function codexRounds() {
       <h3>갑옷과 약점</h3><table class="rank"><tbody>${ARMOR_IDS.map(a => `<tr><td>${armorCell(a)}</td><td>${weakTo(a)}에 2배</td><td class="dim">${ARMORS[a].note}</td></tr>`).join('')}</tbody></table>
       <h3>강해지는 정도</h3><ul class="rules"><li>적 수: 1라운드 약 ${Math.round(10.7)}마리 → 20라운드 ${Math.round(24)} → 40라운드 ${Math.round(38)} (보통)</li><li>체력: 라운드마다 ×1.15 (20라운드는 1라운드의 약 ${Math.round(Math.pow(1.15, 19))}배)</li><li>공격력 +6%, 현상금 +5% / 라운드</li></ul></div>
     <div><h3>적</h3><table class="rank cx-foes"><thead><tr><th></th><th>이름</th><th>갑옷</th><th class="r">체력</th><th class="r">빠르기</th></tr></thead><tbody>${foes.map(k => `<tr><td><img class="px" alt="" src="${sprite(k)}"></td><td>${FOES[k].name}</td><td>${armorCell(FOES[k].armor)}</td><td class="r">${FOES[k].hp}</td><td class="r">${FOES[k].spd}</td></tr>`).join('')}</tbody></table><p class="dim small">체력은 1라운드 보통 난이도 기준입니다.</p></div></div>
-    <h3>특별한 라운드</h3><table class="rank"><tbody><tr><td>${TREASURE_ROUNDS.join(' · ')}</td><td><img class="px cx-mini" alt="" src="${sprite('treasure')}"> <b>보물 도깨비</b>: 잡으면 선물 셋 중 하나를 고릅니다. 24초 뒤 달아납니다.</td></tr>${bosses.map(([r, k, t]) => `<tr><td>${r > ROUNDS ? '40 뒤' : r}</td><td><img class="px cx-mini" alt="" src="${sprite(k)}"> <b>${FOES[k].name}</b>${FOES[k].armor === 'cycle' ? '' : ` ${armorCell(FOES[k].armor)}`}: ${t}</td></tr>`).join('')}</tbody></table>`;
+    <h3>특별한 라운드</h3><table class="rank"><tbody><tr><td>${TREASURE_ROUNDS.join(' · ')}</td><td><img class="px cx-mini" alt="" src="${sprite('treasure')}"> <b>보물 도깨비</b>: 잡으면 선물 셋 중 하나를 고릅니다. 24초 뒤 달아납니다.</td></tr>${bosses.map(([r, k, t]) => `<tr><td>${r > ROUNDS ? '40 뒤' : r}</td><td><img class="px cx-mini" alt="" src="${sprite(k)}"> <b>${FOES[k].name}</b>${FOES[k].armor === 'cycle' ? '' : ` ${armorCell(FOES[k].armor)}`}: ${t}</td></tr>`).join('')}</tbody></table><h3>보스 특성 (악몽부터)</h3><table class="rank"><tbody>${DIFFS.filter(d => d.trait).map(d => `<tr><td>${d.name}</td><td><b>${BOSS_TRAITS[d.trait].name}</b></td><td>${BOSS_TRAITS[d.trait].desc}</td></tr>`).join('')}</tbody></table>`;
 }
 function codexSets() {
   const distinct = t => ITEMS.filter(d => d.cat === 'weapon' && d.type === t).length;
@@ -1419,7 +1440,7 @@ function renderSelect() {
   const d = DIFF[selDiff], boss = '흑룡', best = P.best[d.id] || 0;
   $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('난이도 선택')}<div class="sel-grid"><div class="dlist">${DIFFS.map(x => { const ok = unlocked(x); return `<button class="drow ${x.id === selDiff ? 'on' : ''} ${ok ? '' : 'locked'}" data-act="diff" data-id="${x.id}" ${ok ? '' : 'disabled'}><b>${ok ? x.name : '🔒 ' + x.name}</b><span>${P.wins[x.id] ? `승리 ${P.wins[x.id]}회` : P.best[x.id] ? `최고 ${P.best[x.id] > ROUNDS ? '승리' : P.best[x.id] + '라운드'}` : ok ? '도전 기록 없음' : `${DIFF[x.req].name} 승리 시 열림`}</span></button>`; }).join('')}</div>
     <div class="dview"><canvas id="prevCv" width="300" height="96"></canvas><div class="dname"><b>${d.name}</b><span>${best ? (best > ROUNDS ? '승리 기록 있음' : `최고 ${best} 라운드`) : '아직 도전 기록 없음'}</span></div>
-      <ul class="rules">${d.note.map(n => `<li>${n}</li>`).join('')}<li>적 체력 ×${d.hp} · 수 ×${d.count} · 보스 체력 ×${d.boss}</li><li>40라운드를 버티면 최종 보스 ${boss}가 깨어납니다</li></ul>
+      <ul class="rules">${d.note.map(n => `<li>${n}</li>`).join('')}${d.trait ? `<li class="trait">보스 특성 · <b>${BOSS_TRAITS[d.trait].name}</b>: ${BOSS_TRAITS[d.trait].desc}</li>` : ''}<li>적 체력 ×${d.hp} · 수 ×${d.count} · 보스 체력 ×${d.boss}</li><li>40라운드를 버티면 최종 보스 ${boss}가 깨어납니다</li></ul>
       <p class="reward">보상 · 버틴 라운드마다 기억 조각 ${d.mem} · 승리 시 +${Math.round(25 * d.mem)}</p>
       <div class="sel-actions"><button class="btn big" data-act="codex">도감 보기</button><button class="btn primary big" data-act="start" data-focus>▶ 시작 [Enter]</button></div></div></div></div>`;
   drawPreview(d);
@@ -1512,7 +1533,7 @@ document.addEventListener('click', ev => {
   switch (el.dataset.act) {
     case 'buy': {
       const slot = +el.dataset.slot;
-      if (lastPointer !== 'mouse' && armedSlot !== slot) { armedSlot = slot; for (const c of $$('#shop .card')) c.classList.toggle('armed', +c.dataset.slot === slot); const d = R.shop[slot] && ITEM[R.shop[slot].id]; if (d) showTip(el, d, '<p class="hint">한 번 더 누르면 삽니다</p>'); return; }
+      if (lastPointer !== 'mouse' && armedSlot !== slot) { armedSlot = slot; for (const c of $$('#shop .card')) c.classList.toggle('armed', +c.dataset.slot === slot); const d = R.shop[slot] && ITEM[R.shop[slot].id]; if (d) showTip(el, d, `${stackNote(d)}<p class="hint">한 번 더 누르면 삽니다</p>`); return; }
       armedSlot = -1; hideTip(); buy(slot); break;
     }
     case 'item': {

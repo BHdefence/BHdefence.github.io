@@ -33,6 +33,10 @@ const TIERS = [
   { name: '희귀', color: '#5ea6ff', price: 650 },
   { name: '전설', color: '#ffb347', price: 1500 },
 ];
+// Stacking: weapons stack freely (each copy fires). Any other item stacks up to STACK_MAX copies, and each extra
+// copy adds less: 1st 100%, 2nd 60%, 3rd 40%, 4th and later 30%.
+const STACK_MAX = 10, STACK_EFF = [1, 0.6, 0.4, 0.3];
+const stackEff = k => STACK_EFF[Math.min(k, STACK_EFF.length - 1)];
 const CATS = { weapon: '무기', upg: '강화', eco: '경제', surv: '생존', thorn: '가시' };
 
 // Set bonuses. Type sets count weapons of one type; element sets count every item carrying that element.
@@ -138,14 +142,14 @@ const ITEMS = [
   U('storm', '뇌운', 1, { elemPow: { bolt: 0.5 }, elem: 'bolt', icon: 'bolt', desc: '번개 피해 +50%. 뇌전 세트에 셉니다.' }),
 
   // 경제
-  E('jangteo', '장터', 0, { income: 2, desc: '초당 수입 +2냥' }),
-  E('sangdan', '보부상단', 1, { income: 5, desc: '초당 수입 +5냥' }),
-  E('daesang', '개성 상인', 2, { income: 11, desc: '초당 수입 +11냥' }),
-  E('gukgo', '국고', 3, { income: 24, desc: '초당 수입 +24냥' }),
-  E('bounty1', '현상금', 0, { bounty: 0.3, icon: 'sack', desc: '처치 현상금 +30%' }),
-  E('bounty2', '현상수배', 2, { bounty: 0.7, icon: 'sack', desc: '처치 현상금 +70%' }),
-  E('pawn', '전당포', 1, { interest: 0.05, interestCap: 80, icon: 'sack', desc: '라운드마다 가진 엽전의 5% 이자 (최대 80냥)' }),
-  E('exchange', '환전상', 2, { interest: 0.08, interestCap: 250, icon: 'sack', desc: '라운드마다 가진 엽전의 8% 이자 (최대 250냥)' }),
+  E('jangteo', '장터', 0, { income: 1, desc: '초당 수입 +1냥' }),
+  E('sangdan', '보부상단', 1, { income: 2.5, desc: '초당 수입 +2.5냥' }),
+  E('daesang', '개성 상인', 2, { income: 6, desc: '초당 수입 +6냥' }),
+  E('gukgo', '국고', 3, { income: 13, desc: '초당 수입 +13냥' }),
+  E('bounty1', '현상금', 0, { bounty: 0.2, icon: 'sack', desc: '처치 현상금 +20%' }),
+  E('bounty2', '현상수배', 2, { bounty: 0.4, icon: 'sack', desc: '처치 현상금 +40%' }),
+  E('pawn', '전당포', 1, { interest: 0.04, interestCap: 60, icon: 'sack', desc: '라운드마다 가진 엽전의 4% 이자 (최대 60냥). 이자는 겹치지 않고 가장 좋은 하나만' }),
+  E('exchange', '환전상', 2, { interest: 0.06, interestCap: 150, icon: 'sack', desc: '라운드마다 가진 엽전의 6% 이자 (최대 150냥). 이자는 겹치지 않고 가장 좋은 하나만' }),
 
   // 생존
   S('wall1', '성벽 보강', 0, { maxHp: 250, icon: 'wall', desc: '봉화대 최대 체력 +250' }),
@@ -198,13 +202,22 @@ const DIFFS = [
   { id: 'easy',  name: '쉬움',    hp: 0.7, count: 0.85, boss: 0.7, edmg: 0.8, income: 1.1, mem: 0.5, theme: 'field',  note: ['적 체력이 낮습니다', '처음이라면 여기서 시작하세요'] },
   { id: 'normal', name: '보통',   hp: 1.0, count: 1.0, boss: 1.0, edmg: 1.0, income: 1.0, mem: 1.0, theme: 'field',  note: ['기준 난이도', '주간 랭킹전도 이 난이도입니다'] },
   { id: 'hard',  name: '어려움',  hp: 1.35, count: 1.1, boss: 1.4, edmg: 1.15, income: 1.0, mem: 1.5, theme: 'autumn', note: ['적 체력과 수가 늘어납니다', '이기면 악몽 I이 열립니다'] },
-  { id: 'nm1',   name: '악몽 I',   hp: 1.8, count: 1.2, boss: 2.0, edmg: 1.3, income: 1.0, mem: 2.0, theme: 'night',  note: ['어둠이 깔린 전장', '보스가 훨씬 단단합니다'], req: 'hard' },
-  { id: 'nm2',   name: '악몽 II',  hp: 2.4, count: 1.3, boss: 2.8, edmg: 1.45, income: 1.0, mem: 2.5, theme: 'night',  note: ['적이 더 많이 몰려옵니다'], req: 'nm1' },
-  { id: 'nm3',   name: '악몽 III', hp: 3.2, count: 1.4, boss: 3.8, edmg: 1.6, income: 1.0, mem: 3.0, theme: 'night',  note: ['가장 깊은 악몽', '이기면 저승길 I이 열립니다'], req: 'nm2' },
-  { id: 'nether',  name: '저승길 I',   hp: 3.3, count: 1.4,  boss: 3.9, edmg: 1.6,  income: 1.0, mem: 3.5, theme: 'nether', revive: 0.15, ghost: 0.35, note: ['꽃무릇이 핀 저승 들판', '쓰러진 적의 15%가 원혼으로 다시 일어납니다 (체력 35%)'], req: 'nm3' },
-  { id: 'nether2', name: '저승길 II',  hp: 3.6, count: 1.45, boss: 4.3, edmg: 1.65, income: 1.0, mem: 4.0, theme: 'nether', revive: 0.2,  ghost: 0.4,  note: ['원혼이 더 자주 일어납니다', '쓰러진 적의 20%가 원혼으로 (체력 40%)'], req: 'nether' },
-  { id: 'nether3', name: '저승길 III', hp: 4.0, count: 1.5,  boss: 4.8, edmg: 1.785, income: 1.0, mem: 4.5, theme: 'nether', revive: 0.25, ghost: 0.5,  note: ['저승의 가장 깊은 곳', '쓰러진 적의 25%가 원혼으로 (체력 50%)'], req: 'nether2' },
+  { id: 'nm1',   name: '악몽 I',   hp: 1.8, count: 1.2, boss: 2.0, edmg: 1.3, income: 1.0, mem: 2.0, trait: 'scale', theme: 'night',  note: ['어둠이 깔린 전장', '보스가 훨씬 단단합니다'], req: 'hard' },
+  { id: 'nm2',   name: '악몽 II',  hp: 2.4, count: 1.3, boss: 2.8, edmg: 1.45, income: 1.0, mem: 2.5, trait: 'wind', theme: 'night',  note: ['적이 더 많이 몰려옵니다'], req: 'nm1' },
+  { id: 'nm3',   name: '악몽 III', hp: 3.2, count: 1.4, boss: 3.8, edmg: 1.6, income: 1.0, mem: 3.0, trait: 'pure', theme: 'night',  note: ['가장 깊은 악몽', '이기면 저승길 I이 열립니다'], req: 'nm2' },
+  { id: 'nether',  name: '저승길 I',   hp: 3.3, count: 1.4,  boss: 3.9, edmg: 1.6,  income: 1.0, mem: 3.5, trait: 'fire', theme: 'nether', revive: 0.15, ghost: 0.35, note: ['꽃무릇이 핀 저승 들판', '쓰러진 적의 15%가 원혼으로 다시 일어납니다 (체력 35%)'], req: 'nm3' },
+  { id: 'nether2', name: '저승길 II',  hp: 3.6, count: 1.45, boss: 4.3, edmg: 1.65, income: 1.0, mem: 4.0, trait: 'break', theme: 'nether', revive: 0.2,  ghost: 0.4,  note: ['원혼이 더 자주 일어납니다', '쓰러진 적의 20%가 원혼으로 (체력 40%)'], req: 'nether' },
+  { id: 'nether3', name: '저승길 III', hp: 4.0, count: 1.5,  boss: 4.8, edmg: 1.785, income: 1.0, mem: 4.5, trait: 'adapt', theme: 'nether', revive: 0.25, ghost: 0.5,  note: ['저승의 가장 깊은 곳', '쓰러진 적의 25%가 원혼으로 (체력 50%)'], req: 'nether2' },
 ];
+// 보스 특성: every boss of a difficulty (10·20·30 round bosses and 흑룡) carries that difficulty's trait.
+const BOSS_TRAITS = {
+  scale: { name: '철갑 비늘', desc: '보스가 받는 창검 피해 50%', half: 'blade' },
+  wind:  { name: '바람막이', desc: '보스가 받는 궁시 피해 50%, 관통이 보스에서 멈춤', half: 'arrow' },
+  pure:  { name: '부정 타지 않음', desc: '보스가 받는 부적 피해 50%, 냉기로 느려지지 않음', half: 'charm' },
+  fire:  { name: '불 먹는 몸', desc: '보스가 받는 화포 피해 50%, 불에 타지 않음', half: 'cannon' },
+  break: { name: '요술 꺾기', desc: '보스에게 요술 배율 0.5~1배, 독은 절반만 쌓임' },
+  adapt: { name: '적응하는 원귀', desc: '20초마다 그동안 가장 많이 맞은 무기 종류에 10초 동안 70% 저항' },
+};
 const DIFF = Object.fromEntries(DIFFS.map(d => [d.id, d]));
 
 // 수호 기억: permanent perks bought with memory shards earned from every run.
@@ -233,6 +246,12 @@ const giftTier = r => Math.min(3, 1 + Math.floor(r / 15));
 
 // 봉수 소식: newest first. A new `id` lights the NEW mark on the title screen until the player opens it.
 const NEWS = [
+  { id: '2026-10-14d', date: '10월 14일', title: '겹치기 · 경제 조정, 보스 특성', items: [
+    '무기가 아닌 물건은 같은 것을 10개까지 겹칠 수 있고, 겹칠수록 효과가 줄어듭니다 (1개째 100%, 2개째 60%, 3개째 40%, 4개째부터 30%). 무기는 지금처럼 겹친 만큼 모두 쏩니다.',
+    '경제 물건 수입을 줄였습니다: 장터 +1, 보부상단 +2.5, 개성 상인 +6, 국고 +13냥/초. 현상금 +20%, 현상수배 +40%.',
+    '전당포 4%(최대 60냥), 환전상 6%(최대 150냥). 이자는 겹치지 않고 가장 좋은 하나만 적용됩니다.',
+    '악몽 I부터 보스마다 특성이 붙습니다: 악몽 I 창검 50% · 악몽 II 궁시 50% · 악몽 III 부적 50%·감속 면역 · 저승길 I 화포 50%·화상 면역 · 저승길 II 요술 꺾기 · 저승길 III 적응하는 원귀. 난이도 선택 화면과 도감에서 볼 수 있습니다.',
+  ] },
   { id: '2026-10-14c', date: '10월 14일', title: '새 난이도 저승길 I · II · III', items: [
     '악몽 III을 이기면 저승길 I이 열리고, 하나씩 이길 때마다 다음 단계가 열립니다. 꽃무릇이 핀 저승 들판에서 싸웁니다.',
     '쓰러진 적의 일부가 몇 걸음 뒤에서 원혼으로 한 번 더 일어납니다. 원혼은 절반 세기로 때리고 엽전을 주지 않습니다.',
