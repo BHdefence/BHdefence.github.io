@@ -1102,6 +1102,7 @@ function showMenu(view = 'title') {
         <button class="mbtn" data-act="settings">설정</button>
       </nav></div>
       <aside class="corner paper"><div><span class="dim">기억 조각</span> <b class="gold">${fmt(P.shards)}</b></div><div><span class="dim">이긴 난이도</span> ${wins.length ? wins.join(' · ') : '아직 없음'}</div><div><span class="dim">플레이</span> ${fmt(P.runs)}판</div></aside>
+      <div class="visits" id="visits">${visitHtml()}</div>
       <footer class="credit">글꼴 Galmuri (SIL OFL 1.1) · 1~8 구매 · R 새로고침 · Z 천벌 · Tab 배속 · Space 멈춤</footer>`;
   } else if (view === 'select') renderSelect();
   else if (view === 'perks') renderPerks();
@@ -1300,6 +1301,7 @@ const Cloud = {
     if (window.claude && typeof window.claude.use === 'function') return this.initArtifact();
     this.mode = 'api';
     try { const a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); if (a && a.id && a.token) { this.acct = a; this.uid = a.id; } } catch (e) { /* storage unavailable */ }
+    this.countVisit();
     if (this.acct) { const me = await this.call('GET', '/me'); if (me.ok) await this.pullSave(); }
     if (mode === 'menu') showMenu(menuView);
   },
@@ -1344,6 +1346,15 @@ const Cloud = {
     if (remote && remote.savedAt > P.savedAt) { if (mode === 'menu') { adoptProfile(remote); toast('계정에 저장된 기록을 불러왔습니다'); } this.lastSync = s.at; }
     else if (P.savedAt > 0) this.flush(); else this.lastSync = s.at;
   },
+  visits: null,
+  async countVisit() {
+    let sent = ''; try { sent = localStorage.getItem('bonghwa-visit') || ''; } catch (e) { /* storage unavailable */ }
+    const fresh = sent !== dayId(), r = await this.call(fresh ? 'POST' : 'GET', '/visit');
+    if (!r.ok) return;
+    if (fresh) try { localStorage.setItem('bonghwa-visit', dayId()); } catch (e) { /* storage unavailable */ }
+    this.visits = { total: r.total, today: r.today };
+    const el = $('#visits'); if (el) el.innerHTML = visitHtml();
+  },
   async logout() { if (this.api && this.acct) this.call('POST', '/logout'); this.setAcct(null); },
   // ── shared ──
   watch() {
@@ -1381,6 +1392,7 @@ const Cloud = {
     } catch (e) { return { ok: false, reason: e && e.code === 'invalid_argument' ? 'denied' : 'error' }; }
   },
 };
+const visitHtml = () => (Cloud.visits ? `누적 방문 <b>${fmt(Cloud.visits.total)}</b> · 오늘 <b>${fmt(Cloud.visits.today)}</b>` : '');
 function adoptProfile(remote) { P = remote; try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
 
 // ── account window: 로그인 · 회원가입 · 비밀번호 재설정 ──

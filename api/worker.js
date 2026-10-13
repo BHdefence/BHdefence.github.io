@@ -34,6 +34,11 @@ function newCode() {
   const s = [...r].map(x => A[x % A.length]).join('');
   return `${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8)}`;
 }
+const dayKst = (now = Date.now()) => new Date(now + 9 * 3600e3).toISOString().slice(0, 10);
+async function visitCounts(env, today) {
+  const r = await env.DB.prepare('SELECT COALESCE(SUM(n), 0) AS total, COALESCE(MAX(CASE WHEN day = ? THEN n END), 0) AS today FROM visits').bind(today).first();
+  return { total: r ? r.total : 0, today: r ? r.today : 0 };
+}
 // Same week id as the game: ISO week in Korean time.
 function weekId(now = Date.now()) {
   const d = new Date(now + 9 * 3600e3), day = (d.getUTCDay() + 6) % 7, th = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day + 3));
@@ -113,6 +118,15 @@ export default {
           env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id),
         ]);
         return json(req, { id, token: await newSession(env, id) });
+      }
+
+      // Visitor counter: a browser counts once per Korean day (the game remembers it sent today's visit).
+      if (path === '/visit') {
+        const today = dayKst();
+        if (req.method === 'POST' && !(await limited(env, `visit:${ip}:${today}`, 5, 86400e3))) {
+          await env.DB.prepare('INSERT INTO visits (day, n) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET n = n + 1').bind(today).run();
+        }
+        return json(req, { day: today, ...(await visitCounts(env, today)) });
       }
 
       if (path === '/rank' && req.method === 'GET') {
