@@ -1770,8 +1770,8 @@ const Cloud = {
     };
     for (const t of ['pointerdown', 'keydown']) addEventListener(t, go, true);
   },
-  showVisits(r) { this.visits = { total: r.total, today: r.today }; const el = $('#visits'); if (el) el.innerHTML = visitHtml(); },
-  play(kind) { if (this.api && !navigator.webdriver) this.call('POST', '/play', { kind, from: FROM }); },
+  showVisits(r) { this.visits = { total: r.total, today: r.today, plays: r.plays }; const el = $('#visits'); if (el) el.innerHTML = visitHtml(); },
+  play(kind) { if (!this.api || navigator.webdriver) return; this.call('POST', '/play', { kind, from: FROM }); if (kind === 'start' && this.visits && this.visits.plays != null) this.visits.plays++; },
   // 첫 봉화 완주: diff id → { id, at }
   firsts: null,
   async loadFirsts() {
@@ -1840,7 +1840,7 @@ const FROM = (() => {
   const map = [['dcinside', 'dc'], ['ruliweb', 'ruliweb'], ['hada.io', 'geeknews'], ['okky', 'okky'], ['cafe.naver', 'cafe'], ['blog.naver', 'blog'], ['naver', 'naver'], ['google', 'google'], ['youtu', 'youtube'], ['instagram', 'insta'], ['tiktok', 'tiktok'], ['kakao', 'kakao'], ['discord', 'discord'], ['daum', 'daum'], ['bing', 'bing'], ['itch.io', 'itch']];
   const hit = map.find(([k]) => host.includes(k)); return hit ? hit[1] : 'etc';
 })();
-const visitHtml = () => (Cloud.visits ? `누적 방문 <b>${fmt(Cloud.visits.total)}</b> · 오늘 <b>${fmt(Cloud.visits.today)}</b>` : '');
+const visitHtml = () => { const v = Cloud.visits; return v ? `${v.plays != null ? `누적 판수 <b>${fmt(v.plays)}</b> · ` : ''}누적 방문 <b>${fmt(v.total)}</b> · 오늘 <b>${fmt(v.today)}</b>` : ''; };
 const firstDate = at => { const d = new Date(at + 9 * 3600e3); return `${d.getUTCFullYear()}.${d.getUTCMonth() + 1}.${d.getUTCDate()}`; };
 function firstHtml() {
   const F = Cloud.firsts || {}, held = DIFFS.filter(d => F[d.id]), top = held[held.length - 1], next = DIFFS.find(d => !F[d.id]);

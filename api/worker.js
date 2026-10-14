@@ -47,8 +47,12 @@ function newCode() {
 }
 const dayKst = (now = Date.now()) => new Date(now + 9 * 3600e3).toISOString().slice(0, 10);
 async function visitCounts(env, today) {
-  const r = await env.DB.prepare('SELECT COALESCE(SUM(n), 0) AS total, COALESCE(MAX(CASE WHEN day = ? THEN n END), 0) AS today FROM visits').bind(today).first();
-  return { total: r ? r.total : 0, today: r ? r.today : 0 };
+  const [v, p] = await env.DB.batch([
+    env.DB.prepare('SELECT COALESCE(SUM(n), 0) AS total, COALESCE(MAX(CASE WHEN day = ? THEN n END), 0) AS today FROM visits').bind(today),
+    env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS plays FROM plays WHERE kind = 'start'"),
+  ]);
+  const r = v.results[0], q = p.results[0];
+  return { total: r ? r.total : 0, today: r ? r.today : 0, plays: q ? q.plays : 0 };
 }
 // Same week id as the game: ISO week in Korean time, turning over every Sunday 22:00 (clock shifted 2 hours ahead).
 function weekId(now = Date.now()) {
