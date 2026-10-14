@@ -1434,6 +1434,7 @@ function renderCodex() {
 // ───────────────────────── menu screens ─────────────────────────
 let menuView = 'title', selDiff = P.runs ? 'normal' : 'easy', hallView = 'online';
 function showMenu(view = 'title') {
+  Cloud.adoptHeld();
   noPerks = false; mode = 'menu'; menuView = view; paused = false; closeModal(); hideTip(); $('#menu').hidden = false; $('#banner').hidden = true;
   const m = $('#menuBody');
   if (view === 'title') {
@@ -1656,7 +1657,7 @@ document.addEventListener('click', ev => {
     case 'hallView': hallView = id; if (menuView === 'rank') renderRankMenu(); else renderHall(); break;
     case 'sound': P.sound = !P.sound; persist(); renderSettings(); break;
     case 'music': toggleMusic(); renderSettings(); break;
-    case 'reset': if (Date.now() - resetArmed > 4000) { resetArmed = Date.now(); el.textContent = '한 번 더 누르면 모두 지워집니다'; } else { resetArmed = 0; const keep = { sound: P.sound, nick: P.nick }; P = Object.assign(newProfile(), keep); persist(); toast('모든 진행을 지웠습니다'); renderSettings(); } break;
+    case 'reset': if (Date.now() - resetArmed > 4000) { resetArmed = Date.now(); el.textContent = '한 번 더 누르면 모두 지워집니다'; } else { resetArmed = 0; const keep = { sound: P.sound, nick: P.nick }; P = Object.assign(newProfile(), keep); Cloud.wipe = true; persist(); toast('모든 진행을 지웠습니다'); renderSettings(); } break;
     case 'rotate-skip': rotateChoice = 'port'; fit(); break;
     case 'rotate-go': goLandscape(); break;
   }
@@ -1721,7 +1722,7 @@ const Cloud = {
       this.watch();
       if (this.uid) {
         const snap = await db.doc(`data/users/${this.uid}/save`).get(), remote = snap.exists ? sanitizeProfile((snap.data() || {}).save) : null;
-        if (remote && remote.savedAt > P.savedAt) { if (mode === 'menu') { adoptProfile(remote); toast('계정에 저장된 기록을 불러왔습니다'); } }
+        if (remote && aheadOf(remote, P)) this.hold(remote);
         else if (P.savedAt > 0) this.queue();
       }
       if (mode === 'menu') showMenu(menuView);
@@ -1752,9 +1753,15 @@ const Cloud = {
     const s = await this.call('GET', '/save');
     if (!s.ok) return;
     const remote = s.data ? sanitizeProfile(s.data) : null;
-    if (remote && remote.savedAt > P.savedAt) { if (mode === 'menu') { adoptProfile(remote); toast('계정에 저장된 기록을 불러왔습니다'); } this.lastSync = s.at; }
+    if (remote && aheadOf(remote, P)) { this.lastSync = s.at; this.hold(remote); }
     else if (P.savedAt > 0) this.flush(); else this.lastSync = s.at;
   },
+  // The account's copy is ahead of this browser: take it now in the menu, or as soon as the player returns there.
+  // Until then nothing is uploaded, so this browser's copy can't overwrite it.
+  held: null,
+  hold(remote) { this.held = remote; if (mode === 'menu') this.adoptHeld(); },
+  adoptHeld() { if (!this.held) return; adoptProfile(this.held); this.held = null; toast('계정에 저장된 기록을 불러왔습니다'); },
+  wipe: false,
   visits: null,
   // A visit is counted only after the first real tap, click or key press, so crawlers and link previews that
   // merely load the page are left out; automated browsers (navigator.webdriver) never count.
@@ -1803,9 +1810,17 @@ const Cloud = {
     else this.boardErr = true;
     if (mode === 'menu' && (menuView === 'rank' || menuView === 'hall')) fillBoard(wk);
   },
-  queue() { if (!this.uid) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 1500); },
+  queue() { if (!this.uid || this.held) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 1500); },
   flush() {
-    if (this.api) { this.chain = this.chain.then(() => this.call('PUT', '/save', { data: JSON.parse(JSON.stringify(P)) })).then(r => { if (r && r.ok) this.lastSync = r.at; }); return; }
+    if (this.held) return;
+    if (this.api) {
+      const wipe = this.wipe; this.wipe = false;
+      this.chain = this.chain.then(() => this.call('PUT', '/save', { data: JSON.parse(JSON.stringify(P)), wipe })).then(r => {
+        if (r && r.ok) this.lastSync = r.at;
+        else if (r && r.status === 409 && r.error === 'behind') { this.lastSync = r.at; this.hold(sanitizeProfile(r.data)); }
+      });
+      return;
+    }
     const body = { save: JSON.parse(JSON.stringify(P)), at: Date.now() }, ref = this.db.doc(`data/users/${this.uid}/save`); this.chain = this.chain.then(() => ref.set(body)).catch(e => console.warn('cloud save failed', e));
   },
   async submit(rec) {
@@ -1878,6 +1893,9 @@ function showDonate() {
     <div class="actions"><button class="btn" data-act="close" data-focus>닫기</button></div>`);
 }
 function adoptProfile(remote) { P = remote; try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
+// Which copy wins when a browser meets its account: the one that has played more runs (runs only ever grow), and on a
+// tie the newer one. A fresh browser whose only change is a setting never beats an account with real progress.
+const aheadOf = (a, b) => (a.runs !== b.runs ? a.runs > b.runs : a.savedAt > b.savedAt);
 
 // ── account window: 로그인 · 회원가입 · 비밀번호 재설정 ──
 let acctBusy = false;

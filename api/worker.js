@@ -216,8 +216,12 @@ export default {
       }
       if (path === '/save' && req.method === 'PUT') {
         const text = await req.text(); if (text.length > SAVE_MAX) return fail(req, 413, 'size', '저장 자료가 너무 큽니다.');
-        let data; try { data = JSON.parse(text).data; } catch { return fail(req, 400, 'json', '저장 자료를 읽지 못했습니다.'); }
+        let data, wipe; try { ({ data, wipe } = JSON.parse(text)); } catch { return fail(req, 400, 'json', '저장 자료를 읽지 못했습니다.'); }
         if (!data || typeof data !== 'object') return fail(req, 400, 'json', '저장 자료를 읽지 못했습니다.');
+        // A copy that has played fewer runs never replaces one that has played more (runs only ever grow), unless the
+        // player wiped their progress on purpose. A fresh browser must not overwrite an account's real progress.
+        const cur = await env.DB.prepare('SELECT data, at FROM saves WHERE user_id = ?').bind(uid).first();
+        if (cur && !wipe) { const old = JSON.parse(cur.data), runs = d => Math.max(0, Math.floor(Number(d && d.runs) || 0)); if (runs(data) < runs(old)) return json(req, { error: 'behind', data: old, at: cur.at }, 409); }
         const at = Date.now();
         await env.DB.prepare('INSERT OR REPLACE INTO saves (user_id, data, at) VALUES (?, ?, ?)').bind(uid, JSON.stringify(data), at).run();
         return json(req, { ok: true, at });
