@@ -17,7 +17,7 @@ const stackCapped = id => ITEM[id].cat !== 'weapon' && owned(id) >= STACK_MAX;
 
 // ───────────────────────── profile (persistent) ─────────────────────────
 const SAVE_KEY = 'bonghwa-v1';
-function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, playSec: 0, netherAt: 0, tutorial: false, seen: [], sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [], savedAt: 0 }; }
+function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, playSec: 0, netherAt: 0, tutorial: false, seen: [], sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [], owner: '', savedAt: 0 }; }
 const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 const cleanNick = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12);
 function cleanRec(id, d) {
@@ -33,11 +33,25 @@ function sanitizeProfile(o) {
   p.tutorial = !!o.tutorial; p.seen = Array.isArray(o.seen) ? o.seen.filter(x => typeof x === 'string').slice(0, 20) : []; p.sound = o.sound !== false; p.music = o.music !== false; p.nick = cleanNick(o.nick);
   if (o.ranked && typeof o.ranked === 'object') p.ranked = { day: String(o.ranked.day || '').slice(0, 10), used: clamp(Math.floor(num(o.ranked.used)), 0, 9) };
   if (Array.isArray(o.records)) p.records = o.records.slice(0, 30).map(r => cleanRec('local', r)).filter(Boolean);
+  p.owner = typeof o.owner === 'string' ? o.owner.slice(0, 64) : ''; // the account this copy belongs to ('' = guest)
   p.savedAt = num(o.savedAt);
   return p;
 }
 function loadProfile() { try { const raw = localStorage.getItem(SAVE_KEY); if (raw) return sanitizeProfile(JSON.parse(raw)); } catch (e) { /* storage unavailable */ } return newProfile(); }
-function persist() { P.savedAt = Date.now(); try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } Cloud.queue(); }
+function saveLocal() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
+// Another open tab may have saved further progress; this tab never writes an older copy over it and takes the newer
+// one when it is back in the menu. Only the settings' "모든 진행 지우기" passes force to go back on purpose.
+let tabAhead = null;
+function persist(force = false) {
+  if (!force) { let stored = null; try { const raw = localStorage.getItem(SAVE_KEY); if (raw) stored = sanitizeProfile(JSON.parse(raw)); } catch (e) { /* storage unavailable */ } if (stored && stored.owner === P.owner && stored.runs > P.runs) { tabAhead = stored; return; } }
+  P.savedAt = Date.now(); saveLocal(); Cloud.queue();
+}
+addEventListener('storage', e => {
+  if (e.key !== SAVE_KEY || !e.newValue) return;
+  let o; try { o = sanitizeProfile(JSON.parse(e.newValue)); } catch (err) { return; }
+  if (o.owner !== P.owner || !aheadOf(o, P)) return;
+  if (mode === 'menu') P = o; else tabAhead = o;
+});
 let P = loadProfile();
 const perkL = id => P.perks[id] || 0;
 // In weekly ranked runs everyone starts from the same line: 수호 기억 is switched off for the run itself.
@@ -1434,6 +1448,7 @@ function renderCodex() {
 // ───────────────────────── menu screens ─────────────────────────
 let menuView = 'title', selDiff = P.runs ? 'normal' : 'easy', hallView = 'online';
 function showMenu(view = 'title') {
+  if (tabAhead) { if (tabAhead.owner === P.owner && aheadOf(tabAhead, P)) P = tabAhead; tabAhead = null; }
   Cloud.adoptHeld();
   noPerks = false; mode = 'menu'; menuView = view; paused = false; closeModal(); hideTip(); $('#menu').hidden = false; $('#banner').hidden = true;
   const m = $('#menuBody');
@@ -1657,7 +1672,7 @@ document.addEventListener('click', ev => {
     case 'hallView': hallView = id; if (menuView === 'rank') renderRankMenu(); else renderHall(); break;
     case 'sound': P.sound = !P.sound; persist(); renderSettings(); break;
     case 'music': toggleMusic(); renderSettings(); break;
-    case 'reset': if (Date.now() - resetArmed > 4000) { resetArmed = Date.now(); el.textContent = '한 번 더 누르면 모두 지워집니다'; } else { resetArmed = 0; const keep = { sound: P.sound, nick: P.nick }; P = Object.assign(newProfile(), keep); Cloud.wipe = true; persist(); toast('모든 진행을 지웠습니다'); renderSettings(); } break;
+    case 'reset': if (Date.now() - resetArmed > 4000) { resetArmed = Date.now(); el.textContent = '한 번 더 누르면 모두 지워집니다'; } else { resetArmed = 0; const keep = { sound: P.sound, nick: P.nick }; P = Object.assign(newProfile(), keep, { owner: P.owner }); Cloud.wipe = !!Cloud.uid; persist(true); toast('모든 진행을 지웠습니다'); renderSettings(); } break;
     case 'rotate-skip': rotateChoice = 'port'; fit(); break;
     case 'rotate-go': goLandscape(); break;
   }
@@ -1740,7 +1755,7 @@ const Cloud = {
     } catch (e) { return { ok: false, status: 0, message: '서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.' }; }
   },
   setAcct(a) {
-    this.acct = a; this.uid = a ? a.id : null;
+    this.acct = a; this.uid = a ? a.id : null; this.held = null; this.wipe = false;
     try { if (a) localStorage.setItem(AUTH_KEY, JSON.stringify(a)); else localStorage.removeItem(AUTH_KEY); } catch (e) { /* storage unavailable */ }
   },
   async signedIn(res) {
@@ -1753,14 +1768,17 @@ const Cloud = {
     const s = await this.call('GET', '/save');
     if (!s.ok) return;
     const remote = s.data ? sanitizeProfile(s.data) : null;
-    if (remote && aheadOf(remote, P)) { this.lastSync = s.at; this.hold(remote); }
-    else if (P.savedAt > 0) this.flush(); else this.lastSync = s.at;
+    // This browser's copy belongs to another account that logged out here: it is never sent to this one.
+    const foreign = !!P.owner && P.owner !== this.uid;
+    if (remote && (foreign || aheadOf(remote, P))) { this.lastSync = s.at; this.hold(remote); }
+    else if (foreign) { this.lastSync = s.at; this.hold(Object.assign(newProfile(), { sound: P.sound, music: P.music, tutorial: P.tutorial, seen: P.seen.slice(), nick: this.uid, savedAt: Date.now() }), '새 계정으로 처음부터 시작합니다'); }
+    else { P.owner = this.uid; saveLocal(); if (P.savedAt > 0) this.flush(); else this.lastSync = s.at; }
   },
   // The account's copy is ahead of this browser: take it now in the menu, or as soon as the player returns there.
   // Until then nothing is uploaded, so this browser's copy can't overwrite it.
   held: null,
-  hold(remote) { this.held = remote; if (mode === 'menu') this.adoptHeld(); },
-  adoptHeld() { if (!this.held) return; adoptProfile(this.held); this.held = null; toast('계정에 저장된 기록을 불러왔습니다'); },
+  hold(remote, msg = '계정에 저장된 기록을 불러왔습니다') { this.held = remote; this.heldMsg = msg; if (mode === 'menu') this.adoptHeld(); },
+  adoptHeld() { if (!this.held) return; const h = this.held; this.held = null; h.owner = this.uid || h.owner; adoptProfile(h); if (this.api) this.queue(); toast(this.heldMsg); },
   wipe: false,
   visits: null,
   // A visit is counted only after the first real tap, click or key press, so crawlers and link previews that
@@ -1892,7 +1910,7 @@ function showDonate() {
     <div class="thanks"><h3>장작을 보태 주신 분들</h3>${SUPPORT.thanks.length ? `<p>${SUPPORT.thanks.join(' · ')}</p>` : '<p class="dim">첫 장작을 기다리고 있습니다</p>'}</div>
     <div class="actions"><button class="btn" data-act="close" data-focus>닫기</button></div>`);
 }
-function adoptProfile(remote) { P = remote; try { localStorage.setItem(SAVE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
+function adoptProfile(remote) { P = remote; saveLocal(); }
 // Which copy wins when a browser meets its account: the one that has played more runs (runs only ever grow), and on a
 // tie the newer one. A fresh browser whose only change is a setting never beats an account with real progress.
 const aheadOf = (a, b) => (a.runs !== b.runs ? a.runs > b.runs : a.savedAt > b.savedAt);
@@ -1940,7 +1958,7 @@ async function acctSubmit(kind) {
     acctBusy = true; say('지우는 중입니다…');
     const r = await Cloud.call('POST', '/delete', { pw }); acctBusy = false;
     if (!r.ok) return say(r.message || '다시 시도해 주세요.');
-    Cloud.setAcct(null); closeModal(); toast('계정을 지웠습니다. 게스트로 계속합니다'); if (mode === 'menu') showMenu(menuView); return;
+    P.owner = ''; saveLocal(); Cloud.setAcct(null); closeModal(); toast('계정을 지웠습니다. 게스트로 계속합니다'); if (mode === 'menu') showMenu(menuView); return;
   } else if (!id || !pw) return say('아이디와 비밀번호를 적어 주세요.');
   acctBusy = true; say('잠시만요…'); $$('#accForm button').forEach(b => { b.disabled = true; });
   const body = kind === 'reset' ? { id, code: v('accCode').toUpperCase(), pw } : { id, pw };

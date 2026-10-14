@@ -96,6 +96,7 @@ const ensureTables = env => (ready ??= env.DB.batch([
   env.DB.prepare('CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, text TEXT NOT NULL, at INTEGER NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS plays (day TEXT NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, kind))'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS sources (day TEXT NOT NULL, src TEXT NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, src, kind))'),
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS saves_bak (user_id TEXT NOT NULL, day TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, day))'),
 ]).catch(e => { ready = null; throw e; }));
 async function body(req) { try { const b = await req.json(); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
 const int = (v, lo, hi) => (Number.isFinite(+v) ? Math.max(lo, Math.min(hi, Math.floor(+v))) : lo);
@@ -203,7 +204,7 @@ export default {
       if (path === '/delete' && req.method === 'POST') {
         const b = await body(req), u = await env.DB.prepare('SELECT pw FROM users WHERE id = ?').bind(uid).first();
         if (!u || !(await checkSecret(String(b.pw || ''), u.pw))) return fail(req, 401, 'pw', '비밀번호가 맞지 않습니다.');
-        await env.DB.batch(['rank', 'saves', 'sessions', 'firsts', 'feedback'].map(t => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(uid)).concat(env.DB.prepare('DELETE FROM users WHERE id = ?').bind(uid)));
+        await env.DB.batch(['rank', 'saves', 'saves_bak', 'sessions', 'firsts', 'feedback'].map(t => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(uid)).concat(env.DB.prepare('DELETE FROM users WHERE id = ?').bind(uid)));
         return json(req, { ok: true });
       }
       if (path === '/logout' && req.method === 'POST') {
@@ -222,6 +223,10 @@ export default {
         // player wiped their progress on purpose. A fresh browser must not overwrite an account's real progress.
         const cur = await env.DB.prepare('SELECT data, at FROM saves WHERE user_id = ?').bind(uid).first();
         if (cur && !wipe) { const old = JSON.parse(cur.data), runs = d => Math.max(0, Math.floor(Number(d && d.runs) || 0)); if (runs(data) < runs(old)) return json(req, { error: 'behind', data: old, at: cur.at }, 409); }
+        // Spare copies for restoring a save by hand: the state before the first save of each day, and the state before a
+        // wipe. Kept 14 days and removed with the account.
+        if (cur) await env.DB.prepare(`INSERT ${wipe ? 'OR REPLACE' : 'OR IGNORE'} INTO saves_bak (user_id, day, data, at) VALUES (?, ?, ?, ?)`).bind(uid, wipe ? 'wipe' : dayKst(), cur.data, cur.at).run();
+        if (Math.random() < 0.02) await env.DB.prepare('DELETE FROM saves_bak WHERE at < ?').bind(Date.now() - 14 * 864e5).run();
         const at = Date.now();
         await env.DB.prepare('INSERT OR REPLACE INTO saves (user_id, data, at) VALUES (?, ?, ?)').bind(uid, JSON.stringify(data), at).run();
         return json(req, { ok: true, at });
