@@ -17,7 +17,7 @@ const stackCapped = id => ITEM[id].cat !== 'weapon' && owned(id) >= STACK_MAX;
 
 // ───────────────────────── profile (persistent) ─────────────────────────
 const SAVE_KEY = 'bonghwa-v1';
-function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, playSec: 0, netherAt: 0, tutorial: false, sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [], savedAt: 0 }; }
+function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, playSec: 0, netherAt: 0, tutorial: false, seen: [], sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [], savedAt: 0 }; }
 const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 const cleanNick = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12);
 function cleanRec(id, d) {
@@ -30,7 +30,7 @@ function sanitizeProfile(o) {
   if (o.perks && typeof o.perks === 'object') for (const k in PERK) if (o.perks[k] != null) p.perks[k] = clamp(Math.floor(num(o.perks[k])), 0, PERK[k].max);
   for (const key of ['wins', 'best']) if (o[key] && typeof o[key] === 'object') for (const d of DIFFS) if (o[key][d.id] != null) p[key][d.id] = Math.max(0, Math.floor(num(o[key][d.id])));
   p.runs = Math.max(0, Math.floor(num(o.runs))); p.playSec = Math.max(0, num(o.playSec)); p.netherAt = Math.max(0, num(o.netherAt));
-  p.tutorial = !!o.tutorial; p.sound = o.sound !== false; p.music = o.music !== false; p.nick = cleanNick(o.nick);
+  p.tutorial = !!o.tutorial; p.seen = Array.isArray(o.seen) ? o.seen.filter(x => typeof x === 'string').slice(0, 20) : []; p.sound = o.sound !== false; p.music = o.music !== false; p.nick = cleanNick(o.nick);
   if (o.ranked && typeof o.ranked === 'object') p.ranked = { day: String(o.ranked.day || '').slice(0, 10), used: clamp(Math.floor(num(o.ranked.used)), 0, 9) };
   if (Array.isArray(o.records)) p.records = o.records.slice(0, 30).map(r => cleanRec('local', r)).filter(Boolean);
   p.savedAt = num(o.savedAt);
@@ -344,6 +344,11 @@ function rollShop() {
     while (tier >= 0 && !(cands = ITEMS.filter(it => it.cat === cat && it.tier === tier)).length) tier--;
     R.shop.push({ id: cands[(rng() * cands.length) | 0].id, sold: false });
   }
+  // 첫 출정 안내: until the first weapon is bought, the first stall always holds a cheap weapon strong against the coming armor
+  if (guideActive() && !seen('buy') && !R.items.some(i => ITEM[i.id].cat === 'weapon')) {
+    const want = R.armorSeq[Math.max(1, R.round)], t = TYPE_IDS.find(x => TYPES[x].strong === want) || 'blade';
+    R.shop[0] = { id: ITEMS.find(d => d.cat === 'weapon' && d.type === t && d.tier === 0).id, sold: false };
+  }
 }
 const priceOf = id => TIERS[ITEM[id].tier].price;
 function rerollCost() { return Math.round((15 + Math.max(1, R.round) * 4) * (1 + 0.5 * R.paidRerolls)); }
@@ -357,6 +362,7 @@ function buy(slot) {
   const ico = $(`#shop .card[data-slot="${slot}"] .ico`), from = ico ? rectIn(ico) : null;
   R.gold -= price; R.halfOff = false; s.sold = true;
   addItem(s.id); Sfx.play('buy');
+  if (coachOn === 'buy' && ITEM[s.id].cat === 'weapon') { closeCoach(true); setTimeout(() => coach('armor'), 500); }
   renderShop(); renderInv(); renderRes();
   if (from) flyToBag(from, R.items[R.items.length - 1]);
 }
@@ -994,6 +1000,7 @@ function frame(now) {
   Music.set(musicMood()); Music.tick();
   // total play time: real seconds spent in a live run (not paused, not in menus or a hidden tab)
   if (mode === 'run' && R && R.state === 'run' && !paused && !document.hidden) P.playSec += dt;
+  if (mode === 'run' && R) guideTick();
   if (mode === 'run' && R) {
     if (hitStop > 0) hitStop -= dt;
     else if (!paused && !R.gift && R.state === 'run') for (let i = 0; i < speed; i++) update(dt);
@@ -1225,12 +1232,14 @@ function setPaused(v) {
   renderHud(true);
 }
 function showResult(res) {
-  lastRes = res;
+  lastRes = res; closeCoach(false);
+  const perksTip = guideActive() && !seen('perks') && res.shards > 0; if (perksTip) markSeen('perks');
   const won = R.state === 'won', d = R.diff, cleared = roundsCleared(), canOnline = R.ranked && Cloud.online && !Cloud.api, autoOnline = R.ranked && Cloud.api && !!Cloud.acct && !!res.rec;
   openModal(`<div class="eyebrow ${won ? 'gold' : 'bad'}">${d.name}${R.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}</div><h2>${won ? '봉화를 끝까지 지켰습니다' : R.round === 0 ? '출정 전에 물러났습니다' : `${R.round} 라운드에서 봉화가 꺼졌습니다`}</h2>
     <dl class="facts"><dt>버틴 라운드</dt><dd>${cleared} / ${ROUNDS}${won ? ' + 흑룡' : ''}</dd><dt>처치</dt><dd>${fmt(R.kills)}</dd><dt>시간</dt><dd>${Math.floor(R.time / 60)}분 ${Math.floor(R.time % 60)}초</dd><dt>기억 조각</dt><dd class="gold">+${res.shards}</dd>${res.rec ? `<dt>랭킹 점수</dt><dd class="gold big">${fmt(res.rec.score)}</dd>` : ''}</dl>
     ${won && P.wins[d.id] === 1 && DIFFS.find(x => x.req === d.id) ? `<p class="gold">${opensMsg(DIFFS.find(x => x.req === d.id).name)}</p>` : ''}
     ${canOnline ? `<div class="submit"><input id="nickIn" maxlength="12" placeholder="닉네임" aria-label="닉네임" autocomplete="off"><button class="btn primary" data-act="submit">온라인 랭킹 등록</button></div><p class="dim small" id="submitNote">이 기기 기록에는 자동으로 남겼습니다. 온라인에는 한 사람당 이번 주 최고 기록 하나가 올라갑니다.</p>` : autoOnline ? `<p class="small" id="submitNote">명예의 전당에 <b>${Cloud.acct.id}</b>(으)로 올리는 중입니다…</p>` : R.ranked ? `<p class="dim small">이 기기 랭킹에 기록했습니다.${Cloud.api ? ' 로그인하면 명예의 전당에 올라갑니다.' : ''}</p>` : ''}
+    ${perksTip ? `<div class="guide-note"><span class="seal-s">봉수군</span> 판이 끝나면 <b>기억 조각</b>을 받아요. 아래 <b>수호 기억</b>에서 시작 엽전·체력 같은 영구 강화를 배울 수 있어요.</div>` : ''}
     ${R.round > 0 ? '<button class="btn share-btn" data-act="share">기록 공유 · 자랑하기</button>' : ''}
     <div class="actions"><button class="btn" data-act="menu">메뉴로</button>${R.ranked ? '<button class="btn" data-act="hall">명예의 전당</button>' : '<button class="btn" data-act="perks">수호 기억</button>'}${R.ranked ? (triesLeft() > 0 ? '<button class="btn primary" data-act="rankStart" data-focus>다시 도전</button>' : '') : `<button class="btn primary" data-act="again" data-focus>다시 하기</button>`}</div>`, won ? 'win' : 'lose');
   const ni = $('#nickIn'); if (ni) ni.value = P.nick;
@@ -1421,7 +1430,7 @@ function renderCodex() {
 }
 
 // ───────────────────────── menu screens ─────────────────────────
-let menuView = 'title', selDiff = 'normal', hallView = 'online';
+let menuView = 'title', selDiff = P.runs ? 'normal' : 'easy', hallView = 'online';
 function showMenu(view = 'title') {
   noPerks = false; mode = 'menu'; menuView = view; paused = false; closeModal(); hideTip(); $('#menu').hidden = false; $('#banner').hidden = true;
   const m = $('#menuBody');
@@ -1519,7 +1528,7 @@ let resetArmed = 0;
 function renderSettings() {
   $('#menuBody').innerHTML = `${scrollOpen('narrow')}${panelHead('설정')}<div class="settings"><div class="actions" style="flex:none"><button class="btn" data-act="sound">효과음 ${P.sound ? '켬' : '끔'}</button><button class="btn" data-act="music">배경음악 ${P.music !== false ? '켬' : '끔'} [M]</button></div>
     <h3>조작</h3><table class="keys"><tr><td>1 ~ 8</td><td>상점 칸 구매 (휴대폰은 두 번 눌러 구매)</td></tr><tr><td>R</td><td>상점 새로고침</td></tr><tr><td>Z</td><td>천벌: 화면의 적을 한꺼번에 쓸어냅니다 (보스는 일부 피해)</td></tr><tr><td>B · D · G · H</td><td>세트 · 딜미터 · 사거리 · 상성표</td></tr><tr><td>Tab</td><td>배속 ×1 ×2 ×3</td></tr><tr><td>Space · Esc</td><td>잠시 멈춤</td></tr></table>
-    <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.${Cloud.api ? (Cloud.acct ? ` (계정: ${Cloud.acct.id})` : ' 로그인하면 다른 기기에서도 이어서 할 수 있습니다.') : ''}</p><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div>`;
+    <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.${Cloud.api ? (Cloud.acct ? ` (계정: ${Cloud.acct.id})` : ' 로그인하면 다른 기기에서도 이어서 할 수 있습니다.') : ''}</p><div class="actions" style="flex:none"><button class="btn" data-act="guide-again">첫 출정 안내 다시 보기</button><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div></div>`;
 }
 function startRun(diffId, ranked) {
   if (ranked) { if (triesLeft() <= 0) return; if (P.ranked.day !== rankDayId()) P.ranked = { day: rankDayId(), used: 0 }; P.ranked.used++; persist(); }
@@ -1528,17 +1537,58 @@ function startRun(diffId, ranked) {
   $('#menu').hidden = true; $('#fpanel').hidden = true; for (const b of $$('[data-act="fp"]')) b.classList.remove('on');
   renderShop(); renderInv(); renderHud(true); Sfx.ensure();
   banner(R.ranked ? `주간 랭킹전 ${weekId()}` : R.diff.name, R.ranked ? `수호 기억 없이 모두 같은 출발선 · ${PREP_TIME}초 뒤 첫 라운드` : `${PREP_TIME}초 뒤 첫 라운드 · 장터에서 무기를 사세요`);
-  if (!P.tutorial) showTutorial();
+  closeCoach(false);
 }
-function showTutorial() {
-  paused = true;
-  openModal(`<div class="eyebrow gold">처음 오셨군요</div><h2>봉화대를 지키는 법</h2><ul class="rules">
-    <li>적은 사방의 어둠에서 봉수대로 몰려옵니다. 봉수대의 <b>다섯 홰</b>는 체력이라, 체력이 20% 줄 때마다 불 하나가 꺼집니다</li>
-    <li>왼쪽 <b>장터</b>에서 무기를 사면 봉수대가 저절로 쏩니다. 엽전은 초당 수입과 처치 현상금으로 모입니다</li>
-    <li>무기 종류마다 강한 갑옷이 있습니다. 위쪽 <b>이번 주력 / 다음 주력</b>을 보고 맞는 무기를 고르세요 (H 상성표)</li>
-    <li>같은 종류나 속성의 <b>서로 다른</b> 물건을 모으면 <b>세트 효과</b>가 붙습니다 (B)</li>
-    <li>위기에는 <b>천벌</b>(Z)로 화면의 적을 쓸어내세요. 한 판에 한 번입니다</li></ul>
-    <div class="actions"><button class="btn primary" data-act="tutDone" data-focus>알겠습니다</button></div>`);
+// ── 첫 출정 안내: one tip at a time, at the moment it matters, with the part of the screen it talks about lit up ──
+const GUIDE = {
+  tower:    { at: '#res', side: 'left', ack: true, text: '오른쪽 위 <b>다섯 홰</b>가 봉수대의 체력이에요. 체력이 20% 줄 때마다 불이 하나씩 꺼지고, 모두 꺼지면 판이 끝나요.' },
+  buy:      { at: '#shop .card[data-slot="0"]', side: 'right', text: '왼쪽 <b>장터</b>에서 무기를 사면 봉수대가 알아서 쏴요. 빛나는 무기를 하나 사 보세요.<br><span class="dim">휴대폰은 두 번 누르면 사요</span>' },
+  armor:    { at: '#hArmor', side: 'below', ack: true, text: '적마다 갑옷이 달라요. 위의 <b>이번 주력</b> 갑옷에 강한 무기는 피해가 <b>2배</b>예요. 어떤 무기가 강한지는 <b>상성</b> 버튼(H)에서 볼 수 있어요.' },
+  coin:     { at: '#purse', side: 'right', auto: 3.5, text: '적을 잡으면 <b>엽전</b>이 들어와요. 시간이 지나도 조금씩 쌓여요.' },
+  reroll:   { at: '#reroll', side: 'right', ack: true, text: '마음에 드는 물건이 없으면 <b>새로고침</b>(R). 라운드마다 한 번은 무료예요.' },
+  set:      { at: '[data-act="fp"][data-id="set"]', side: 'left', ack: true, text: '같은 종류의 <b>서로 다른</b> 무기를 모으면 <b>세트 효과</b>가 켜져요. <b>세트</b> 버튼(B)에서 확인하세요.' },
+  smite:    { at: '#bSmite', side: 'left', ack: true, text: '위험해요! <b>천벌</b>(Z)을 쓰면 화면의 적을 한꺼번에 쓸어내요. 한 판에 한 번뿐이에요.' },
+  treasure: { at: '#field', side: 'inside', auto: 4.5, text: '<b>보물 도깨비</b>가 나타났어요! 잡으면 선물 셋 중 하나를 골라요. 24초 뒤에 달아나요.' },
+};
+const GUIDE_IDS = [...Object.keys(GUIDE), 'perks'];
+let coachOn = null, coachTm = 0;
+const guideActive = () => !P.tutorial && !!R && !R.ranked;
+const seen = id => P.seen.includes(id);
+function markSeen(id) { if (!seen(id)) P.seen.push(id); if (GUIDE_IDS.every(seen)) P.tutorial = true; persist(); }
+function coach(id) {
+  if (!guideActive() || seen(id) || coachOn) return false;
+  const g = GUIDE[id], target = $(g.at); if (!target) return false;
+  const box = $('#coach'), r = rectIn(target), W = screenEl.offsetWidth, H = screenEl.offsetHeight, pad = 6;
+  box.innerHTML = `<div class="hole"></div><div class="bubble paper" role="dialog" aria-live="polite"><div class="who"><span class="seal-s">봉수군</span><span class="dim">${GUIDE_IDS.indexOf(id) + 1} / ${GUIDE_IDS.length}</span></div><p>${g.text}</p><div class="row"><button class="link" data-act="coach-off">안내 끄기</button>${g.ack ? '<button class="btn primary" data-act="coach-ok" data-focus>알겠어요</button>' : ''}</div></div>`;
+  const hole = box.querySelector('.hole'), bub = box.querySelector('.bubble');
+  Object.assign(hole.style, { left: r.x - pad + 'px', top: r.y - pad + 'px', width: r.w + pad * 2 + 'px', height: r.h + pad * 2 + 'px' });
+  if (g.side === 'inside') hole.classList.add('soft');
+  box.hidden = false;
+  const bw = bub.offsetWidth, bh = bub.offsetHeight, gap = 16;
+  let x = g.side === 'right' ? r.x + r.w + gap : g.side === 'left' ? r.x - bw - gap : r.x + r.w / 2 - bw / 2;
+  let y = g.side === 'below' ? r.y + r.h + gap : g.side === 'inside' ? r.y + r.h - bh - 40 : r.y + r.h / 2 - bh / 2;
+  bub.style.left = Math.max(10, Math.min(W - bw - 10, x)) + 'px'; bub.style.top = Math.max(10, Math.min(H - bh - 10, y)) + 'px';
+  coachOn = id; clearTimeout(coachTm);
+  if (g.ack) { paused = true; bub.querySelector('[data-focus]').focus({ preventScroll: true }); }
+  if (g.auto) coachTm = setTimeout(() => closeCoach(true), g.auto * 1000);
+  return true;
+}
+function closeCoach(done) {
+  const id = coachOn; if (!id) return; coachOn = null; clearTimeout(coachTm); $('#coach').hidden = true;
+  if (GUIDE[id].ack && $('#modal').hidden) paused = false;
+  if (done) { markSeen(id); if (id === 'tower') coach('buy'); }
+}
+function guideOff() { const id = coachOn; coachOn = null; clearTimeout(coachTm); $('#coach').hidden = true; if (id && GUIDE[id].ack && $('#modal').hidden) paused = false; P.tutorial = true; persist(); toast('안내를 껐습니다. 설정에서 다시 볼 수 있어요'); }
+// Checked every frame during a live run: each tip waits for its moment.
+function guideTick() {
+  if (!guideActive() || coachOn || R.state !== 'run' || R.gift || paused || !$('#modal').hidden) return;
+  if (!seen('tower')) return void coach('tower');
+  if (!seen('buy')) return void coach('buy');
+  if (R.kills > 0 && !seen('coin')) return void coach('coin');
+  if (R.round >= 2 && !seen('reroll')) return void coach('reroll');
+  if (!seen('set') && Object.values(R.S.typeCount).some(n => n >= 2)) return void coach('set');
+  if (!seen('smite') && R.smites > 0 && R.hp < R.S.maxHp * 0.5) return void coach('smite');
+  if (!seen('treasure') && R.enemies.some(e => e.d.treasure && e.hp > 0 && onField(e))) return void coach('treasure');
 }
 
 // ───────────────────────── input ─────────────────────────
@@ -1575,7 +1625,9 @@ document.addEventListener('click', ev => {
     case 'share-back': if (lastRes) showResult(lastRes); break;
     case 'menu': showMenu('title'); break;
     case 'gift': takeGift(+id); break;
-    case 'tutDone': P.tutorial = true; persist(); paused = false; closeModal(); break;
+    case 'coach-ok': closeCoach(true); break;
+    case 'coach-off': guideOff(); break;
+    case 'guide-again': P.tutorial = false; P.seen = []; persist(); toast('다음 판에서 첫 출정 안내가 다시 나옵니다'); break;
     case 'submit': submitRank(); break;
     case 'go-title': showMenu('title'); break;
     case 'go-select': showMenu('select'); break;
@@ -1623,7 +1675,8 @@ window.addEventListener('keydown', ev => {
   if (R.gift) { if (k === 'Digit1' || k === 'Digit2' || k === 'Digit3') takeGift(+k.slice(5) - 1); return; }
   if (R.state !== 'run') return;
   if (!$('#modal').hidden && !paused) return;
-  if (k === 'Space' || k === 'Escape') { if (!P.tutorial) return; setPaused(!paused); ev.preventDefault(); return; }
+  if (coachOn && GUIDE[coachOn].ack && (k === 'Enter' || k === 'Space')) { closeCoach(true); ev.preventDefault(); return; }
+  if (k === 'Space' || k === 'Escape') { if (coachOn) return; setPaused(!paused); ev.preventDefault(); return; }
   if (paused) { if (k === 'KeyN' && !R.ranked) { closeModal(); startRun(R.diff.id, false); } return; }
   if (/^Digit[1-8]$/.test(k)) { buy(+k.slice(5) - 1); ev.preventDefault(); }
   else if (/^Numpad[1-8]$/.test(k)) { buy(+k.slice(6) - 1); ev.preventDefault(); }
@@ -1635,7 +1688,7 @@ window.addEventListener('keydown', ev => {
   else if (k === 'KeyG') { R.showRange = !R.showRange; $('#bRange').classList.toggle('on', R.showRange); }
   else if (k === 'Tab') { speed = speed % 3 + 1; renderHud(true); ev.preventDefault(); }
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'run' && R) persist(); if (document.hidden && mode === 'run' && R && R.state === 'run' && !paused && !R.gift && P.tutorial) setPaused(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'run' && R) persist(); if (document.hidden && mode === 'run' && R && R.state === 'run' && !paused && !R.gift && !coachOn) setPaused(true); });
 
 // ───────────────────────── accounts, shared ranking & cloud save ─────────────────────────
 // Two backends. Inside the claude.ai artifact viewer `window.claude.use` reaches a shared store (`rank/<viewer id>`,

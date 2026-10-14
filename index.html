@@ -206,6 +206,20 @@ table.mt td.x2 { color: #1a120c; background: var(--gold); }
 #tip .actions { margin-top: 8px; display: flex; gap: 6px; } #tip .actions .btn { font-size: 16px; min-height: 34px; }
 
 /* modal: a hanging scroll */
+#coach { position: absolute; inset: 0; z-index: 45; pointer-events: none; }
+#coach .hole { position: absolute; border-radius: 6px; box-shadow: 0 0 0 4000px rgba(8,6,14,.6), 0 0 0 3px var(--gold), 0 0 26px rgba(243,201,74,.7); animation: coachPulse 1.4s ease-in-out infinite; }
+#coach .hole.soft { box-shadow: 0 0 0 4000px rgba(8,6,14,.25), 0 0 0 2px rgba(243,201,74,.6); animation: none; }
+@keyframes coachPulse { 50% { box-shadow: 0 0 0 4000px rgba(8,6,14,.6), 0 0 0 5px var(--gold), 0 0 36px rgba(243,201,74,.9); } }
+#coach .bubble { position: absolute; width: 330px; display: grid; gap: 8px; padding: 14px 16px 12px; font-size: 17px; line-height: 1.5; color: var(--ink); border-radius: 3px; box-shadow: 0 10px 30px rgba(0,0,0,.6); pointer-events: auto; }
+#coach .bubble p { margin: 0; } #coach .bubble b { color: var(--verm); font-weight: 400; }
+#coach .who { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+#coach .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+#coach .row .btn { padding: 4px 16px; font-size: 16px; }
+#coach .link { padding: 2px 0; font: inherit; font-size: 14px; color: var(--ink-2); background: none; border: 0; text-decoration: underline; cursor: pointer; }
+.seal-s { display: inline-block; padding: 1px 7px; font-family: var(--serif); font-size: 14px; color: #fff0de; background: var(--verm); border-radius: 3px; }
+.guide-note { padding: 10px 12px; font-size: 16px; line-height: 1.5; text-align: left; background: rgba(184,50,31,.08); border: 1px dashed var(--verm); border-radius: 3px; }
+.guide-note b { color: var(--verm); font-weight: 400; }
+@media (prefers-reduced-motion: reduce) { #coach .hole { animation: none; } }
 #modal { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(ellipse at center, rgba(10,6,5,.45), rgba(5,3,2,.82)); animation: fadeIn .2s ease-out; }
 @keyframes fadeIn { from { opacity: 0; } }
 .mcard { position: relative; width: 580px; max-height: 640px; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 26px 30px 24px; border-radius: 2px; box-shadow: 0 16px 40px rgba(0,0,0,.7); animation: unroll .35s ease-out; }
@@ -433,6 +447,7 @@ table.keys { border-collapse: collapse; font-size: 17px; } table.keys td { paddi
 
     <canvas id="ov" width="640" height="360" aria-hidden="true"></canvas>
     <div id="tip" hidden></div>
+    <div id="coach" hidden></div>
 
     <div id="menu">
       <canvas id="titleCv" width="640" height="360" aria-hidden="true"></canvas>
@@ -450,8 +465,8 @@ table.keys { border-collapse: collapse; font-size: 17px; } table.keys td { paddi
   <button class="btn" data-act="rotate-skip">세로 그대로 보기</button>
 </div>
 <noscript>이 게임은 자바스크립트가 필요합니다.</noscript>
-<script src="data.js?v=20261014-13"></script>
-<script src="art.js?v=20261014-13"></script>
-<script src="game.js?v=20261014-13"></script>
+<script src="data.js?v=20261014-14"></script>
+<script src="art.js?v=20261014-14"></script>
+<script src="game.js?v=20261014-14"></script>
 </body>
 </html>
