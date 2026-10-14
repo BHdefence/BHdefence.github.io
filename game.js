@@ -1239,7 +1239,7 @@ function showResult(res) {
 // ───────────────────────── 기록 공유 카드 ─────────────────────────
 // After a run, the result can be shared as a 1080×1350 picture: the night ridge and the 봉수대 as it stood at the end
 // (its lit fires = remaining health), a hanji scroll with the record, the three weapons that dealt the most, and the link.
-const SITE_URL = 'https://bhdefence.github.io/';
+const SITE_URL = 'https://bhdefence.github.io/?from=share';
 let lastRes = null, shareBlob = null, shareUrl = '';
 function runSummary() {
   const won = R.state === 'won', byId = new Map();
@@ -1709,14 +1709,14 @@ const Cloud = {
     if (sent === dayId() || navigator.webdriver) return;
     const go = async () => {
       for (const t of ['pointerdown', 'keydown']) removeEventListener(t, go, true);
-      const p = await this.call('POST', '/visit'); if (!p.ok) return;
+      const p = await this.call('POST', '/visit', { from: FROM }); if (!p.ok) return;
       try { localStorage.setItem('bonghwa-visit', dayId()); } catch (e) { /* storage unavailable */ }
       this.showVisits(p);
     };
     for (const t of ['pointerdown', 'keydown']) addEventListener(t, go, true);
   },
   showVisits(r) { this.visits = { total: r.total, today: r.today }; const el = $('#visits'); if (el) el.innerHTML = visitHtml(); },
-  play(kind) { if (this.api && !navigator.webdriver) this.call('POST', '/play', { kind }); },
+  play(kind) { if (this.api && !navigator.webdriver) this.call('POST', '/play', { kind, from: FROM }); },
   // 첫 봉화 완주: diff id → { id, at }
   firsts: null,
   async loadFirsts() {
@@ -1768,6 +1768,23 @@ const Cloud = {
     } catch (e) { return { ok: false, reason: e && e.code === 'invalid_argument' ? 'denied' : 'error' }; }
   },
 };
+// 유입 경로: ?from=dc in the link wins; otherwise guess from the referring site; no referrer means 'direct'.
+// Kept for the browser session and removed from the address bar so a copied link does not carry it along.
+const FROM = (() => {
+  const ok = v => /^[a-z0-9_-]{1,20}$/.test(v || '') ? v : '';
+  let f = '';
+  try {
+    const u = new URL(location.href); f = ok((u.searchParams.get('from') || '').toLowerCase());
+    if (u.searchParams.has('from')) { u.searchParams.delete('from'); history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); }
+    if (f) sessionStorage.setItem('bonghwa-from', f); else f = ok(sessionStorage.getItem('bonghwa-from'));
+  } catch (e) { /* storage or URL unavailable */ }
+  if (f) return f;
+  let host = ''; try { host = document.referrer ? new URL(document.referrer).hostname : ''; } catch (e) { /* bad referrer */ }
+  if (!host) return 'direct';
+  if (host === location.hostname) return 'self';
+  const map = [['dcinside', 'dc'], ['ruliweb', 'ruliweb'], ['hada.io', 'geeknews'], ['okky', 'okky'], ['cafe.naver', 'cafe'], ['blog.naver', 'blog'], ['naver', 'naver'], ['google', 'google'], ['youtu', 'youtube'], ['instagram', 'insta'], ['tiktok', 'tiktok'], ['kakao', 'kakao'], ['discord', 'discord'], ['daum', 'daum'], ['bing', 'bing'], ['itch.io', 'itch']];
+  const hit = map.find(([k]) => host.includes(k)); return hit ? hit[1] : 'etc';
+})();
 const visitHtml = () => (Cloud.visits ? `누적 방문 <b>${fmt(Cloud.visits.total)}</b> · 오늘 <b>${fmt(Cloud.visits.today)}</b>` : '');
 const firstDate = at => { const d = new Date(at + 9 * 3600e3); return `${d.getUTCFullYear()}.${d.getUTCMonth() + 1}.${d.getUTCDate()}`; };
 function firstHtml() {

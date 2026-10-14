@@ -11,6 +11,9 @@ const NOTE_MAX = 500;
 const PLAY_KINDS = ['start', 'ranked', 'end', 'win'];
 // Crawlers, link-preview fetchers and headless browsers run the page too; they are never counted.
 const BOT_RE = /bot|crawl|spider|slurp|yeti|daum|preview|facebookexternalhit|kakaotalk-scrap|headless|lighthouse|pagespeed|python|curl|wget/i;
+// Where a visitor came from (?from=dc, or guessed from the referrer by the game): counted per day with the visit or play.
+const SRC_RE = /^[a-z0-9_-]{1,20}$/;
+const countSource = (env, day, src, kind) => (SRC_RE.test(src || '') ? env.DB.prepare('INSERT INTO sources (day, src, kind, n) VALUES (?, ?, ?, 1) ON CONFLICT(day, src, kind) DO UPDATE SET n = n + 1').bind(day, src, kind).run() : null);
 const isBot = req => BOT_RE.test(req.headers.get('User-Agent') || '');
 const ITER = 100000, SESSION_DAYS = 180, RESET_TRIES = 5, LOCK_MS = 30 * 60e3, SAVE_MAX = 32 * 1024;
 
@@ -86,6 +89,7 @@ const ensureTables = env => (ready ??= env.DB.batch([
   env.DB.prepare('CREATE TABLE IF NOT EXISTS firsts (diff TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, text TEXT NOT NULL, at INTEGER NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS plays (day TEXT NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, kind))'),
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS sources (day TEXT NOT NULL, src TEXT NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, src, kind))'),
 ]).catch(e => { ready = null; throw e; }));
 async function body(req) { try { const b = await req.json(); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
 const int = (v, lo, hi) => (Number.isFinite(+v) ? Math.max(lo, Math.min(hi, Math.floor(+v))) : lo);
@@ -143,15 +147,18 @@ export default {
         const today = dayKst();
         if (req.method === 'POST' && !isBot(req) && !(await limited(env, `visit:${ip}:${today}`, 5, 86400e3))) {
           await env.DB.prepare('INSERT INTO visits (day, n) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET n = n + 1').bind(today).run();
+          await countSource(env, today, String((await body(req)).from || ''), 'visit');
         }
         return json(req, { day: today, ...(await visitCounts(env, today)) });
       }
 
       // Daily play counts for everyone, guests included: how many runs started, finished and were won. Numbers only.
       if (path === '/play' && req.method === 'POST') {
-        const kind = String((await body(req)).kind || ''), day = dayKst();
-        if (PLAY_KINDS.includes(kind) && !isBot(req) && !(await limited(env, `play:${ip}:${day}`, 300, 86400e3)))
+        const b = await body(req), kind = String(b.kind || ''), day = dayKst();
+        if (PLAY_KINDS.includes(kind) && !isBot(req) && !(await limited(env, `play:${ip}:${day}`, 300, 86400e3))) {
           await env.DB.prepare('INSERT INTO plays (day, kind, n) VALUES (?, ?, 1) ON CONFLICT(day, kind) DO UPDATE SET n = n + 1').bind(day, kind).run();
+          await countSource(env, day, String(b.from || ''), kind);
+        }
         return json(req, { ok: true });
       }
 
