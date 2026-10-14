@@ -1528,7 +1528,7 @@ let resetArmed = 0;
 function renderSettings() {
   $('#menuBody').innerHTML = `${scrollOpen('narrow')}${panelHead('설정')}<div class="settings"><div class="actions" style="flex:none"><button class="btn" data-act="sound">효과음 ${P.sound ? '켬' : '끔'}</button><button class="btn" data-act="music">배경음악 ${P.music !== false ? '켬' : '끔'} [M]</button></div>
     <h3>조작</h3><table class="keys"><tr><td>1 ~ 8</td><td>상점 칸 구매 (휴대폰은 두 번 눌러 구매)</td></tr><tr><td>R</td><td>상점 새로고침</td></tr><tr><td>Z</td><td>천벌: 화면의 적을 한꺼번에 쓸어냅니다 (보스는 일부 피해)</td></tr><tr><td>B · D · G · H</td><td>세트 · 딜미터 · 사거리 · 상성표</td></tr><tr><td>Tab</td><td>배속 ×1 ×2 ×3</td></tr><tr><td>Space · Esc</td><td>잠시 멈춤</td></tr></table>
-    <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.${Cloud.api ? (Cloud.acct ? ` (계정: ${Cloud.acct.id})` : ' 로그인하면 다른 기기에서도 이어서 할 수 있습니다.') : ''}</p><div class="actions" style="flex:none"><button class="btn" data-act="guide-again">첫 출정 안내 다시 보기</button><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div></div>`;
+    <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.${Cloud.api ? (Cloud.acct ? ` (계정: ${Cloud.acct.id})` : ' 로그인하면 다른 기기에서도 이어서 할 수 있습니다.') : ''}</p><div class="actions" style="flex:none"><button class="btn" data-act="guide-again">첫 출정 안내 다시 보기 (쉬움으로 시작)</button><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div></div>`;
 }
 function startRun(diffId, ranked) {
   if (ranked) { if (triesLeft() <= 0) return; if (P.ranked.day !== rankDayId()) P.ranked = { day: rankDayId(), used: 0 }; P.ranked.used++; persist(); }
@@ -1627,7 +1627,7 @@ document.addEventListener('click', ev => {
     case 'gift': takeGift(+id); break;
     case 'coach-ok': closeCoach(true); break;
     case 'coach-off': guideOff(); break;
-    case 'guide-again': P.tutorial = false; P.seen = []; persist(); toast('다음 판에서 첫 출정 안내가 다시 나옵니다'); break;
+    case 'guide-again': P.tutorial = false; P.seen = []; persist(); startRun('easy', false); break;
     case 'submit': submitRank(); break;
     case 'go-title': showMenu('title'); break;
     case 'go-select': showMenu('select'); break;
