@@ -1234,11 +1234,13 @@ function setPaused(v) {
 function showResult(res) {
   lastRes = res; closeCoach(false);
   const perksTip = guideActive() && !seen('perks') && res.shards > 0; if (perksTip) markSeen('perks');
+  const askJoin = R.state === 'won' && Cloud.api && !Cloud.acct, firstFree = askJoin && Cloud.firsts && !Cloud.firsts[R.diff.id];
   const won = R.state === 'won', d = R.diff, cleared = roundsCleared(), canOnline = R.ranked && Cloud.online && !Cloud.api, autoOnline = R.ranked && Cloud.api && !!Cloud.acct && !!res.rec;
   openModal(`<div class="eyebrow ${won ? 'gold' : 'bad'}">${d.name}${R.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}</div><h2>${won ? '봉화를 끝까지 지켰습니다' : R.round === 0 ? '출정 전에 물러났습니다' : `${R.round} 라운드에서 봉화가 꺼졌습니다`}</h2>
     <dl class="facts"><dt>버틴 라운드</dt><dd>${cleared} / ${ROUNDS}${won ? ' + 흑룡' : ''}</dd><dt>처치</dt><dd>${fmt(R.kills)}</dd><dt>시간</dt><dd>${Math.floor(R.time / 60)}분 ${Math.floor(R.time % 60)}초</dd><dt>기억 조각</dt><dd class="gold">+${res.shards}</dd>${res.rec ? `<dt>랭킹 점수</dt><dd class="gold big">${fmt(res.rec.score)}</dd>` : ''}</dl>
     ${won && P.wins[d.id] === 1 && DIFFS.find(x => x.req === d.id) ? `<p class="gold">${opensMsg(DIFFS.find(x => x.req === d.id).name)}</p>` : ''}
     ${canOnline ? `<div class="submit"><input id="nickIn" maxlength="12" placeholder="닉네임" aria-label="닉네임" autocomplete="off"><button class="btn primary" data-act="submit">온라인 랭킹 등록</button></div><p class="dim small" id="submitNote">이 기기 기록에는 자동으로 남겼습니다. 온라인에는 한 사람당 이번 주 최고 기록 하나가 올라갑니다.</p>` : autoOnline ? `<p class="small" id="submitNote">명예의 전당에 <b>${Cloud.acct.id}</b>(으)로 올리는 중입니다…</p>` : R.ranked ? `<p class="dim small">이 기기 랭킹에 기록했습니다.${Cloud.api ? ' 로그인하면 명예의 전당에 올라갑니다.' : ''}</p>` : ''}
+    ${askJoin ? `<div class="join-ask"><b>${firstFree ? `${R.diff.name} 첫 봉화 완주자가 아직 없어요!` : '이긴 기록을 남겨 보세요'}</b><p>${firstFree ? '지금 가입하면 방금 이긴 기록으로 <em>타이틀 화면에 이름</em>이 걸립니다.' : '가입하면 기록이 계정에 저장되고, 주간 랭킹전과 명예의 전당에 참가할 수 있어요.'}</p><div class="actions"><button class="btn primary" data-act="acct" data-id="signup" data-focus>무료 가입하기</button><button class="btn" data-act="acct" data-id="login">로그인</button></div></div>` : ''}
     ${perksTip ? `<div class="guide-note"><span class="seal-s">봉수군</span> 판이 끝나면 <b>기억 조각</b>을 받아요. 아래 <b>수호 기억</b>에서 시작 엽전·체력 같은 영구 강화를 배울 수 있어요.</div>` : ''}
     ${R.round > 0 ? '<button class="btn share-btn" data-act="share">기록 공유 · 자랑하기</button>' : ''}
     <div class="actions"><button class="btn" data-act="menu">메뉴로</button>${R.ranked ? '<button class="btn" data-act="hall">명예의 전당</button>' : '<button class="btn" data-act="perks">수호 기억</button>'}${R.ranked ? (triesLeft() > 0 ? '<button class="btn primary" data-act="rankStart" data-focus>다시 도전</button>' : '') : `<button class="btn primary" data-act="again" data-focus>다시 하기</button>`}</div>`, won ? 'win' : 'lose');
@@ -1647,7 +1649,7 @@ document.addEventListener('click', ev => {
     case 'start': if (unlocked(DIFF[selDiff])) startRun(selDiff, false); break;
     case 'rankStart': if (Cloud.api && !Cloud.acct) { showAccount('login', '주간 랭킹전은 로그인해야 참가할 수 있습니다.'); break; } if (triesLeft() > 0) startRun('normal', true); break;
     case 'acct': showAccount(id); break;
-    case 'acct-done': closeModal(); if (mode === 'menu') showMenu(menuView); break;
+    case 'acct-done': closeModal(); if (mode === 'menu') showMenu(menuView); else if (R && R.state !== 'run' && lastRes) showResult(lastRes); break;
     case 'acct-logout': Cloud.logout().then(() => { closeModal(); toast('로그아웃했습니다. 게스트로 계속합니다'); if (mode === 'menu') showMenu(menuView); }); break;
     case 'acct-copy': { const t = $('#accCodeOut').textContent; const ok = () => { el.textContent = '복사됨 ✓'; }; if (navigator.clipboard) navigator.clipboard.writeText(t).then(ok, () => { const r = document.createRange(); r.selectNodeContents($('#accCodeOut')); getSelection().removeAllRanges(); getSelection().addRange(r); }); break; }
     case 'perk': buyPerk(id); break;
@@ -1779,7 +1781,7 @@ const Cloud = {
   },
   async claimFirst(diff, quiet = false) {
     if (!this.api || (this.firsts && this.firsts[diff])) return;
-    if (!this.acct) { if (this.firsts && !quiet) setTimeout(() => toast(`아직 ${DIFF[diff].name} 첫 완주자가 없습니다! 로그인하고 이기면 이름이 걸립니다`), 1800); return; }
+    if (!this.acct) return; // guests are invited on the result window; their wins are claimed when they sign in
     const r = await this.call('POST', '/first', { diff }); if (!r.ok) return;
     if (this.firsts && r.holder) this.firsts[diff] = r.holder;
     if (r.first) setTimeout(() => toast(`${DIFF[diff].name} 첫 봉화 완주! 타이틀 화면에 이름이 걸립니다`), quiet ? 0 : 1800);

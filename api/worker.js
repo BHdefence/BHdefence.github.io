@@ -8,6 +8,8 @@ const CODE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/;
 const WEEK_RE = /^\d{4}-W\d{2}$/;
 const DIFF_IDS = ['easy', 'normal', 'hard', 'nm1', 'nm2', 'nm3', 'nether', 'nether2', 'nether3']; // same ids as DIFFS in data.js
 const NOTE_MAX = 500;
+// The developer's own accounts never take a 첫 봉화 완주 slot, so those stay open for players.
+const STAFF_IDS = ['ksjer1124', 'kkjlg'];
 const PLAY_KINDS = ['start', 'ranked', 'end', 'win'];
 // Crawlers, link-preview fetchers and headless browsers run the page too; they are never counted.
 const BOT_RE = /bot|crawl|spider|slurp|yeti|daum|preview|facebookexternalhit|kakaotalk-scrap|headless|lighthouse|pagespeed|python|curl|wget/i;
@@ -231,7 +233,7 @@ export default {
         if (await limited(env, `first:${uid}`, 20, 86400e3)) return fail(req, 429, 'rate', '잠시 뒤 다시 해 주세요.');
         const diff = String((await body(req)).diff || '');
         if (!DIFF_IDS.includes(diff)) return fail(req, 400, 'diff', '없는 난이도입니다.');
-        const r = await env.DB.prepare('INSERT OR IGNORE INTO firsts (diff, user_id, at) VALUES (?, ?, ?)').bind(diff, uid, Date.now()).run();
+        const r = STAFF_IDS.includes(uid) ? { meta: { changes: 0 } } : await env.DB.prepare('INSERT OR IGNORE INTO firsts (diff, user_id, at) VALUES (?, ?, ?)').bind(diff, uid, Date.now()).run();
         const row = await env.DB.prepare('SELECT user_id AS id, at FROM firsts WHERE diff = ?').bind(diff).first();
         return json(req, { ok: true, first: r.meta.changes > 0, holder: row });
       }
