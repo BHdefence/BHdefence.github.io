@@ -116,7 +116,7 @@ const ITEMS = [
   W('geoul', '요괴 거울', 2, 'chaos', { dmg: 72, cd: 1.0, range: 125, chain: 2, icon: 'mirror', desc: '빛이 둘에게 더 튑니다.' }),
   W('yeouiju', '여의주', 3, 'chaos', { dmg: 190, cd: 0.95, range: 140, chain: 3, icon: 'pearl', desc: '용의 구슬. 셋에게 더 튑니다.' }),
   W('horibyeong', '요괴 호리병', 1, 'chaos', { dmg: 34, cd: 0.95, range: 115, lifeOnKill: 4, icon: 'gourd', desc: '쓰러뜨린 적의 기운을 빨아들여 봉화대 체력을 4 채웁니다.' }),
-  W('samjokoh', '삼족오', 3, 'chaos', { dmg: 120, cd: 0.95, range: 150, shots: 3, randElem: true, icon: 'crow', desc: '태양의 세 발 까마귀. 세 발을 흩뿌리고, 칠 때마다 아무 속성이나 붙습니다.' }),
+  W('samjokoh', '삼족오', 3, 'chaos', { dmg: 70, cd: 0.95, range: 150, shots: 3, randElem: true, icon: 'crow', desc: '태양의 세 발 까마귀. 세 발을 흩뿌리고, 칠 때마다 아무 속성이나 붙습니다.' }),
 
   // 강화
   U('blade1', '창검 수련', 0, { typeDmg: { blade: 0.15 }, type: 'blade', desc: '창검 피해 +15%' }),
