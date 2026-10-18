@@ -1717,7 +1717,7 @@ function mapSvg(sel) {
   for (const rt of ROUTES) {
     const pts = rt.stages.map(x => stagePos(STAGE[x.id])), open = stageOpen(STAGE[rt.stages[0].id]);
     o += `<polyline class="route${open ? '' : ' off'}" style="--rc:${rt.color}" points="${pts.map(pt).join(' ')} ${pt(h)}"/>`;
-    const [dx, dy, anc, at = 0] = { r2: [10, 4, 'start'], r5: [-8, 16, 'end'], r1: [-10, 4, 'end', 1], r3: [8, -8, 'start'], r4: [-6, -15, 'start'] }[rt.id], f = pts[at];
+    const [dx, dy, anc, at = 0] = { r2: [10, 4, 'start'], r5: [-10, 4, 'end', 1], r1: [-10, 4, 'end', 1], r3: [8, -8, 'start'], r4: [-6, -15, 'start'] }[rt.id], f = pts[at];
     o += `<text class="rname${open ? '' : ' off'}" x="${f[0] + dx}" y="${f[1] + dy}" text-anchor="${anc}" style="--rc:${rt.color}">${rt.name}</text>`;
   }
   for (const st of STAGES) {
