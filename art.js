@@ -154,6 +154,23 @@ const SPR = {
     '..kkkk..'], alt: [
     '.kcCCck.',
     '..kkkk..'] },
+  changgwi: { rows: [
+    '..kk....kk..',
+    '.kock..kcok.',
+    '.kcccccccck.',
+    'kcoccccccock',
+    'kcrkcccckrck',
+    'kcccccccccck',
+    '.kcwkwwkwck.',
+    '..kcccccck..',
+    '.kcoCCCCock.',
+    'kccCoCCoCcck',
+    'kwkCCCCCCkwk',
+    '.k.kCooCk.k.',
+    '...kckkck...',
+    '...kk..kk...'], alt: [
+    '..kck..kck..',
+    '..kk....kk..'] },
   treasure: { rows: [
     '.....kk.......',
     '....kyyk.kkk..',
@@ -220,6 +237,8 @@ const SPR = {
 // Bosses that reuse a smaller map with their own colors.
 const SPR_ALIAS = {
   chief: { base: 'grunt', pal: { b: '#c8503a', B: '#8c2b22', y: '#f3d36a' } },
+  geuseundae: { base: 'giant', pal: { V: '#2e2640', v: '#433858', x: '#1b1526', y: '#ff5a4a' } },
+  shadow: { base: 'wisp', pal: { c: '#55467a', C: '#2e2640', w: '#ff7a6a' } },
 };
 const SPR_SCALE = { chief: 2, bulga: 2, gumiho: 2, dragon: 2 };
 
@@ -279,6 +298,24 @@ const ICONS = {
   pearl: [
     '....kkkk....', '...kmmmmk...', '..kmwwmmmk..', '.kmwwmmmmmk.', '.kmwmmmmmmk.', '.kmmmmmmmmk.',
     '.kmmmmmmPmk.', '..kmmmmPPk..', '...kmPPPk...', '....kkkk....', '...kyyyyk...', '..kkkkkkkk..'],
+  glaive: [
+    '.......kkkk.', '......kwsssk', '......ksk.kk', '.....kNsk...', '....kNk.k...', '...kNk......',
+    '..kNk.......', '.kNk........', 'kNk.........', 'kk..........', '............', '............'],
+  crossbow: [
+    '............', 'kkkk....kkkk', 'kNNNkkkkNNNk', '.kk.kssk.kk.', '....kNNk....', '....kNNk....',
+    '...kkNNkk...', '....kNNk....', '....kNNk....', '....kNNk....', '....kkkk....', '............'],
+  caltrop: [
+    '.....k......', '..k.kwk.k...', '.kwkkkkkwk..', '..kGGGGGGk..', '.kGGsGGGGGk.', 'kwkGGGGGGkwk',
+    '.kGGGGGGGGk.', '.kGGGGGGGGk.', '..kGGGGGGk..', '.kwkkkkkkwk.', '..k......k..', '............'],
+  gourd: [
+    '.....kk.....', '....kNNk....', '.....kk.....', '....kaak....', '...kaawak...', '....kaak....',
+    '...kaaaak...', '..kaawaaak..', '..kaaaaaak..', '..kaaaaaak..', '...kaaaak...', '....kkkk....'],
+  crow: [
+    '....kkk.....', '...kKKKk....', '..kKyKKk....', '.kkKKKKkk...', 'kKKKKKKKKk..', '.kKKKKKKKKk.',
+    '..kKKKKKKKKk', '...kKKKKKkk.', '....kkkkk...', '....y.y.y...', '....y.y.y...', '............'],
+  boat: [
+    '.....k......', '.....kk.....', '.....kwk....', '.....kwwk...', '.....kwwwk..', '.....kkkkkk.',
+    'kkkkkkkkkkkk', 'kNYNYNYNYNNk', '.kNNNNNNNNk.', '..kkkkkkkk..', '.cc..cc..cc.', '............'],
   up: [
     '.....kk.....', '....kaak....', '...kaaaak...', '..kaaaaaak..', '.kaaaaaaaak.', 'kkkkaaaakkkk',
     '...kaaaak...', '...kaaaak...', '...kaaaak...', '...kaaaak...', '...kkkkkk...', '............'],
@@ -425,6 +462,7 @@ const THEMES = {
   field:  { grass: ['#2c5233', '#36633a', '#417443', '#55894b'], flower: ['#f0d36a', '#e98fb8', '#f4f1e7'], path: ['#6a5a40', '#7a684a', '#887555'], stone: ['#7d8290', '#8f94a0', '#6a6f7c'], rim: '#474b57', tree: ['#1f4528', '#2c5c34', '#3b7343'], trunk: '#4a3322', amb: '10,14,46', dark: 0.6, edge: 0.32, mote: 'firefly' },
   autumn: { grass: ['#5e4f28', '#6e5e2f', '#7f6c35', '#95803f'], flower: ['#e0672f', '#f0b24a', '#c94a2c'], path: ['#5f4a34', '#6e563c', '#7d6446'], stone: ['#857b70', '#968a7c', '#6f665c'], rim: '#4a423a', tree: ['#8a3a20', '#b5532c', '#d27a33'], trunk: '#432c1c', amb: '26,12,34', dark: 0.64, edge: 0.3, mote: 'leaf' },
   nether: { grass: ['#13232a', '#182c33', '#1e363c', '#284446'], flower: ['#d8283a', '#ff4a5a', '#e8e4dc'], path: ['#4a4a50', '#58585e', '#68676c'], stone: ['#5c6670', '#6c7680', '#4a525c'], rim: '#262c34', tree: ['#16222a', '#1e2c34', '#283840'], trunk: '#1a2228', amb: '2,10,18', dark: 0.74, edge: 0.28, mote: 'soul', dead: true, lily: true, seed: 5, win: '#9ff0e6', winLight: '120,240,220', lamp: '120,220,255' },
+  snow:   { grass: ['#b9c5d4', '#c9d3e0', '#d8e0ea', '#e8eef5'], flower: ['#8fa8c8', '#ffffff', '#6f8fb8'], path: ['#6a6460', '#7c7570', '#8d8680'], stone: ['#8a909c', '#9ca2ad', '#767c88'], rim: '#4e5260', tree: ['#1c3a33', '#27493f', '#33584c'], trunk: '#3a2a20', amb: '16,24,56', dark: 0.52, edge: 0.3, mote: 'snow', seed: 11, snowcap: true },
   night:  { grass: ['#211d33', '#29243e', '#322c4a', '#3d3658'], flower: ['#8a5ad8', '#5ab0d8', '#c84a6a'], path: ['#3c3346', '#463c52', '#51465e'], stone: ['#5a5868', '#6a6878', '#4c4a5a'], rim: '#2a2834', tree: ['#241c32', '#30263f', '#3d3150'], trunk: '#221a2a', amb: '8,4,22', dark: 0.7, edge: 0.24, mote: 'wisp', dead: true },
 };
 const hexRgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -511,6 +549,7 @@ function drawTree(g, x, y, T, rnd) {
   pell(g, x, y - 8, 8, 5, PAL.k); pell(g, x - 1, y - 13, 7, 4, PAL.k);
   pell(g, x, y - 8, 7, 4, T.tree[0]); pell(g, x - 1, y - 13, 6, 3, T.tree[1]); pell(g, x - 2, y - 15, 3, 2, T.tree[2]);
   for (let i = 0; i < 7; i++) pr(g, x - 6 + rnd() * 11, y - 16 + rnd() * 11, 1, 1, i % 2 ? T.tree[2] : T.tree[0]);
+  if (T.snowcap) { pell(g, x - 2, y - 15, 3, 1, '#f2f6fb'); pell(g, x - 1, y - 10, 5, 1, '#e4ecf4'); pell(g, x, y - 6, 6, 1, '#dbe4ee'); }
 }
 function drawHouse(g, x, y, rnd, T) {
   // 초가집: plaster walls with timber posts, a rounded thatch roof, one lit window
@@ -614,7 +653,7 @@ function darkPass(g, w, h, amb, alpha, edge, lights, cx, cy) {
   g.globalCompositeOperation = 'source-over';
 }
 // Where each sprite's eyes are, so foes in the dark show glinting eyes before their bodies.
-const EYES = { grunt: [[4, 4], [7, 4]], chief: [[4, 4], [7, 4]], runner: [[3, 4], [6, 4]], bandit: [[5, 4], [6, 4]], guard: [[4, 4], [7, 4]], gangsi: [[5, 4], [6, 4]], hareubang: [[4, 5], [7, 5]], giant: [[6, 3], [9, 3]], wolf: [[1, 3]], treasure: [[4, 4], [7, 4]], bulga: [[2, 5]], gumiho: [[2, 5]], dragon: [[10, 4], [15, 4]] };
+const EYES = { grunt: [[4, 4], [7, 4]], chief: [[4, 4], [7, 4]], runner: [[3, 4], [6, 4]], bandit: [[5, 4], [6, 4]], guard: [[4, 4], [7, 4]], gangsi: [[5, 4], [6, 4]], hareubang: [[4, 5], [7, 5]], giant: [[6, 3], [9, 3]], wolf: [[1, 3]], treasure: [[4, 4], [7, 4]], bulga: [[2, 5]], gumiho: [[2, 5]], dragon: [[10, 4], [15, 4]], changgwi: [[2, 4], [9, 4]], geuseundae: [[6, 3], [9, 3]] };
 // Ink splats left where a foe falls.
 const INK = [];
 function bakeInk() {

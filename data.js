@@ -76,6 +76,7 @@ const ITEMS = [
   W('binggeom', '빙검', 2, 'blade', { dmg: 44, cd: 0.55, range: 105, elem: 'frost', icon: 'sword', desc: '서리 서린 검이 발을 묶습니다.' }),
   W('chilseong', '칠성검', 3, 'blade', { dmg: 95, cd: 0.45, range: 110, bounce: 3, icon: 'star', desc: '북두칠성의 검. 세 번 튕깁니다.' }),
   W('noesin', '뇌신검', 3, 'blade', { dmg: 105, cd: 0.55, range: 110, elem: 'bolt', icon: 'sword', desc: '벼락을 머금은 검.' }),
+  W('woldo', '월도', 1, 'blade', { dmg: 16, cd: 1.0, range: 58, sweep: true, icon: 'glaive', desc: '봉화대 둘레를 크게 베어 가까이 온 적을 모두 칩니다.' }),
   // 궁시 — 긴 사거리·관통, 경갑에 2배
   W('gakgung', '각궁', 0, 'arrow', { dmg: 13, cd: 0.95, range: 150, icon: 'bow', desc: '물소 뿔로 만든 활. 멀리 쏩니다.' }),
   W('dokhwasal', '독화살', 0, 'arrow', { dmg: 10, cd: 0.95, range: 150, elem: 'poison', icon: 'arrow', desc: '독을 바른 화살.' }),
@@ -85,6 +86,8 @@ const ITEMS = [
   W('noegung', '뇌전궁', 2, 'arrow', { dmg: 66, cd: 0.95, range: 170, elem: 'bolt', icon: 'bow', desc: '시위에서 번개가 튑니다.' }),
   W('cheongung', '천궁', 3, 'arrow', { dmg: 170, cd: 0.85, range: 200, pierce: 3, icon: 'bow', desc: '하늘을 꿰는 활. 셋을 꿰뚫습니다.' }),
   W('seorigung', '서리궁', 3, 'arrow', { dmg: 140, cd: 0.9, range: 190, elem: 'frost', pierce: 1, icon: 'bow', desc: '얼음 화살이 길을 얼립니다.' }),
+  W('soenoe', '쇠뇌', 1, 'arrow', { dmg: 44, cd: 1.5, range: 190, bossDmg: 0.6, icon: 'crossbow', desc: '무거운 쇠뇌 화살. 보스에게 피해 +60%.' }),
+  W('sunogi', '수노기', 2, 'arrow', { dmg: 30, cd: 1.0, range: 160, shots: 3, icon: 'crossbow', desc: '연발 쇠뇌. 세 발을 잇달아 쏩니다.' }),
   // 부적 — 상태 이상, 철갑에 2배
   W('hwabu', '화부', 0, 'charm', { dmg: 11, cd: 1.0, range: 120, elem: 'fire', icon: 'charm', desc: '불 부적.' }),
   W('bingbu', '빙부', 0, 'charm', { dmg: 9, cd: 1.0, range: 120, elem: 'frost', icon: 'charm', desc: '얼음 부적.' }),
@@ -94,6 +97,8 @@ const ITEMS = [
   W('jeoseung', '저승부', 2, 'charm', { dmg: 62, cd: 1.05, range: 130, execute: 0.12, icon: 'skull', desc: '체력 12% 아래의 적을 저승으로 보냅니다.' }),
   W('cheondung', '천둥신부', 3, 'charm', { dmg: 140, cd: 1.0, range: 140, elem: 'bolt', chain: 3, icon: 'charm5', desc: '천둥 신장이 넷을 잇따라 칩니다.' }),
   W('taegeuk', '태극부', 3, 'charm', { dmg: 130, cd: 1.0, range: 140, elem: 'frost', elem2: 'fire', icon: 'yinyang', desc: '음양의 기운으로 얼리고 태웁니다.' }),
+  W('nakinbu', '낙인부', 1, 'charm', { dmg: 16, cd: 1.1, range: 130, mark: 4, icon: 'charm', desc: '낙인이 찍힌 적은 4초 동안 모든 피해를 25% 더 받습니다.' }),
+  W('gyeolgye', '결계부', 2, 'charm', { dmg: 40, cd: 1.6, range: 130, field: { r: 24, t: 3, dps: 0.45, slow: 0.35, c: '#9be6ff' }, elem: 'frost', icon: 'charm5', desc: '맞은 자리에 3초 동안 결계를 쳐서 들어온 적을 느리게 하고 깎습니다.' }),
   // 화포 — 광역 폭발, 석갑에 2배
   W('jincheonroe', '비격진천뢰', 0, 'cannon', { dmg: 22, cd: 1.9, range: 130, splash: 16, proj: 'shell', icon: 'bomb', desc: '터지는 쇳덩이 폭탄.' }),
   W('chongtong', '총통', 1, 'cannon', { dmg: 50, cd: 1.9, range: 140, splash: 20, proj: 'shell', icon: 'cannon', desc: '화약으로 쏘는 포.' }),
@@ -102,12 +107,16 @@ const ITEMS = [
   W('singijeon', '신기전', 2, 'cannon', { dmg: 34, cd: 2.6, range: 160, splash: 12, shots: 6, elem: 'fire', proj: 'rocket', icon: 'hwacha', desc: '신기전 여섯 발이 무리를 덮칩니다.' }),
   W('hongi', '홍이포', 3, 'cannon', { dmg: 290, cd: 2.5, range: 170, splash: 32, proj: 'shell', icon: 'cannon', desc: '가장 큰 포. 넓게 터집니다.' }),
   W('cheonja', '천자총통', 3, 'cannon', { dmg: 240, cd: 2.4, range: 165, splash: 28, stun: 0.5, proj: 'shell', icon: 'cannon', desc: '맞은 적을 0.5초 기절시킵니다.' }),
+  W('jillyeo', '질려포통', 1, 'cannon', { dmg: 26, cd: 2.2, range: 140, splash: 16, field: { r: 18, t: 3, dps: 0.35, slow: 0.3, c: '#c9a36a' }, proj: 'shell', icon: 'caltrop', desc: '터지면서 마름쇠를 뿌려 3초 동안 밟는 적을 깎고 늦춥니다.' }),
+  W('pajinpo', '파진포', 2, 'cannon', { dmg: 110, cd: 2.4, range: 150, splash: 24, knock: 16, proj: 'shell', icon: 'cannon', desc: '폭발로 적을 뒤로 밀어냅니다.' }),
   // 요술 — 0.5~2배 무작위, 약점 없음
   W('dokkaebibul', '도깨비불', 0, 'chaos', { dmg: 15, cd: 0.9, range: 115, icon: 'wisp', desc: '떠도는 푸른 불.' }),
   W('bangmangi', '도깨비 방망이', 1, 'chaos', { dmg: 36, cd: 0.9, range: 115, goldOnKill: 1, icon: 'club', desc: '때려잡은 적마다 엽전 1냥이 더 나옵니다.' }),
   W('dungap', '둔갑술', 2, 'chaos', { dmg: 78, cd: 0.95, range: 125, randElem: true, icon: 'mask', desc: '칠 때마다 아무 속성이나 붙습니다.' }),
   W('geoul', '요괴 거울', 2, 'chaos', { dmg: 72, cd: 1.0, range: 125, chain: 2, icon: 'mirror', desc: '빛이 둘에게 더 튑니다.' }),
   W('yeouiju', '여의주', 3, 'chaos', { dmg: 190, cd: 0.95, range: 140, chain: 3, icon: 'pearl', desc: '용의 구슬. 셋에게 더 튑니다.' }),
+  W('horibyeong', '요괴 호리병', 1, 'chaos', { dmg: 34, cd: 0.95, range: 115, lifeOnKill: 4, icon: 'gourd', desc: '쓰러뜨린 적의 기운을 빨아들여 봉화대 체력을 4 채웁니다.' }),
+  W('samjokoh', '삼족오', 3, 'chaos', { dmg: 120, cd: 0.95, range: 150, shots: 3, randElem: true, icon: 'crow', desc: '태양의 세 발 까마귀. 세 발을 흩뿌리고, 칠 때마다 아무 속성이나 붙습니다.' }),
 
   // 강화
   U('blade1', '창검 수련', 0, { typeDmg: { blade: 0.15 }, type: 'blade', desc: '창검 피해 +15%' }),
@@ -140,6 +149,7 @@ const ITEMS = [
   U('chill', '한기', 1, { elemPow: { frost: 0.5 }, elem: 'frost', icon: 'snow', desc: '감속이 더 오래 갑니다. 냉기 세트에 셉니다.' }),
   U('venom', '맹독', 1, { elemPow: { poison: 0.6 }, elem: 'poison', icon: 'drop', desc: '독 피해 +60%. 독 세트에 셉니다.' }),
   U('storm', '뇌운', 1, { elemPow: { bolt: 0.5 }, elem: 'bolt', icon: 'bolt', desc: '번개 피해 +50%. 뇌전 세트에 셉니다.' }),
+  U('bossdmg', '토벌 비책', 2, { bossDmg: 0.25, icon: 'target', desc: '보스에게 주는 피해 +25%' }),
 
   // 경제
   E('jangteo', '장터', 0, { income: 1, desc: '초당 수입 +1냥' }),
@@ -150,6 +160,7 @@ const ITEMS = [
   E('bounty2', '현상수배', 2, { bounty: 0.4, icon: 'sack', desc: '처치 현상금 +40%' }),
   E('pawn', '전당포', 1, { interest: 0.04, interestCap: 60, icon: 'sack', desc: '라운드마다 가진 엽전의 4% 이자 (최대 60냥). 이자는 겹치지 않고 가장 좋은 하나만' }),
   E('exchange', '환전상', 2, { interest: 0.06, interestCap: 150, icon: 'sack', desc: '라운드마다 가진 엽전의 6% 이자 (최대 150냥). 이자는 겹치지 않고 가장 좋은 하나만' }),
+  E('segok', '세곡선', 1, { roundGold: 40, roundGoldPer: 3, icon: 'boat', desc: '라운드가 시작할 때마다 엽전 (40 + 라운드×3)냥' }),
 
   // 생존
   S('wall1', '성벽 보강', 0, { maxHp: 250, icon: 'wall', desc: '봉화대 최대 체력 +250' }),
@@ -164,6 +175,7 @@ const ITEMS = [
   S('shield3', '천신 가호', 3, { shield: 2500, icon: 'shield', desc: '라운드마다 다시 차는 보호막 +2,500' }),
   S('dr1', '망루 보강', 1, { dr: 0.06, icon: 'shield', desc: '받는 피해 -6%' }),
   S('dr2', '철갑 망루', 2, { dr: 0.12, icon: 'shield', desc: '받는 피해 -12%' }),
+  S('signal', '봉수 신호', 3, { smites: 1, icon: 'flame', desc: '이번 판 천벌 +1회. 살 때 바로 채워지고, 되팔아도 그대로입니다.' }),
 
   // 가시 — 봉화대를 때린 적에게 피해를 돌려줍니다 (라운드가 오를수록 강해짐)
   T('tangja', '탱자 가시', 0, { thorn: 12, desc: '때린 적에게 12 반사' }),
@@ -173,6 +185,7 @@ const ITEMS = [
   T('bulgasi', '불가시', 2, { thorn: 70, elem: 'fire', desc: '70 반사 + 화상. 화염 세트에 셉니다.' }),
   T('gasiseong', '가시 성채', 3, { thorn: 320, desc: '때린 적에게 320 반사' }),
   T('gasison', '가시 손질', 1, { thornPow: 0.6, icon: 'up', desc: '가시 반사 피해 +60%' }),
+  T('mareumsoe', '마름쇠', 1, { thorn: 15, thornSlow: 0.4, desc: '때린 적에게 15 반사, 2초 동안 40% 느려짐' }),
 ];
 const ITEM = Object.fromEntries(ITEMS.map(i => [i.id, i]));
 const CAT_WEIGHT = { weapon: 42, upg: 28, eco: 12, surv: 12, thorn: 6 };
@@ -188,13 +201,18 @@ const FOES = {
   gangsi:    { name: '강시',        armor: 'heavy',  hp: 78,  spd: 14, dmg: 9,  cd: 1.1, bounty: 5, r: 6, spr: 'gangsi', hop: true },
   hareubang: { name: '돌하르방',    armor: 'fort',   hp: 140, spd: 8,  dmg: 14, cd: 1.6, bounty: 6, r: 7, spr: 'hareubang' },
   giant:     { name: '바위 거인',   armor: 'fort',   hp: 200, spd: 7,  dmg: 20, cd: 1.8, bounty: 8, r: 9, spr: 'giant' },
+  changgwi:  { name: '창귀',        armor: 'light',  hp: 18,  spd: 27, dmg: 3,  cd: 0.9, bounty: 2, r: 5, spr: 'changgwi', pack: 3, from: 6, note: '6라운드부터 · 셋씩 무리 지어 몰려옵니다' },
+  geuseundae: { name: '그슨대',     armor: 'heavy',  hp: 150, spd: 9,  dmg: 15, cd: 1.6, bounty: 6, r: 9, spr: 'geuseundae', split: 'shadow', from: 12, note: '12라운드부터 · 쓰러지면 그림자 둘로 갈라집니다' },
+  shadow:    { name: '그림자',      armor: 'medium', hp: 45,  spd: 19, dmg: 6,  cd: 1.0, bounty: 2, r: 5, spr: 'shadow', float: true, note: '그슨대가 갈라져 나옵니다' },
   treasure:  { name: '보물 도깨비', armor: 'medium', hp: 380, spd: 34, dmg: 0,  cd: 99,  bounty: 0, r: 7, spr: 'treasure', treasure: true },
   chief:     { name: '두억시니',    armor: 'medium', hp: 3800,  spd: 9,  dmg: 60,  cd: 1.6, bounty: 150, r: 13, spr: 'chief', boss: true, summon: 'grunt' },
   bulga:     { name: '불가사리',    armor: 'heavy',  hp: 15000, spd: 7,  dmg: 110, cd: 2.0, bounty: 300, r: 15, spr: 'bulga', boss: true, summon: 'guard' },
   gumiho:    { name: '구미호',      armor: 'light',  hp: 42000, spd: 15, dmg: 140, cd: 1.2, bounty: 600, r: 14, spr: 'gumiho', boss: true, summon: 'wisp' },
   dragon:    { name: '흑룡',        armor: 'cycle',  hp: 170000, spd: 5, dmg: 150, cd: 2.0, bounty: 0, r: 20, spr: 'dragon', boss: true, final: true, summon: 'giant' },
 };
-const POOL = { light: ['runner', 'wolf', 'wisp'], medium: ['grunt', 'bandit'], heavy: ['guard', 'gangsi'], fort: ['hareubang', 'giant'] };
+const POOL = { light: ['runner', 'wolf', 'wisp', 'changgwi'], medium: ['grunt', 'bandit'], heavy: ['guard', 'gangsi', 'geuseundae'], fort: ['hareubang', 'giant'] };
+// A foe with `from` joins its pool only from that round on.
+const poolAt = (armor, r) => POOL[armor].filter(k => !FOES[k].from || r >= FOES[k].from);
 const MID_BOSS = { 10: 'chief', 20: 'bulga', 30: 'gumiho' };
 const TREASURE_ROUNDS = [5, 15, 25, 35];
 
@@ -202,7 +220,7 @@ const DIFFS = [
   { id: 'easy',  name: '쉬움',    hp: 0.7, count: 0.85, boss: 0.7, edmg: 0.8, income: 1.1, mem: 0.5, theme: 'field',  note: ['적 체력이 낮습니다', '처음이라면 여기서 시작하세요'] },
   { id: 'normal', name: '보통',   hp: 1.0, count: 1.0, boss: 1.0, edmg: 1.0, income: 1.0, mem: 1.0, theme: 'field',  note: ['기준 난이도', '주간 랭킹전도 이 난이도입니다'] },
   { id: 'hard',  name: '어려움',  hp: 1.35, count: 1.1, boss: 1.4, edmg: 1.15, income: 1.0, mem: 1.5, theme: 'autumn', note: ['적 체력과 수가 늘어납니다', '이기면 악몽 I이 열립니다'] },
-  { id: 'nm1',   name: '악몽 I',   hp: 1.8, count: 1.2, boss: 2.0, edmg: 1.3, income: 1.0, mem: 2.0, trait: 'scale', theme: 'night',  note: ['어둠이 깔린 전장', '보스가 훨씬 단단합니다'], req: 'hard' },
+  { id: 'nm1',   name: '악몽 I',   hp: 1.65, count: 1.15, boss: 1.65, edmg: 1.25, income: 1.0, mem: 2.0, trait: 'scale', theme: 'night',  note: ['어둠이 깔린 전장', '보스가 훨씬 단단합니다'], req: 'hard' },
   { id: 'nm2',   name: '악몽 II',  hp: 2.4, count: 1.3, boss: 2.8, edmg: 1.45, income: 1.0, mem: 2.5, trait: 'wind', theme: 'night',  note: ['적이 더 많이 몰려옵니다'], req: 'nm1' },
   { id: 'nm3',   name: '악몽 III', hp: 3.2, count: 1.4, boss: 3.8, edmg: 1.6, income: 1.0, mem: 3.0, trait: 'pure', theme: 'night',  note: ['가장 깊은 악몽', '이기면 저승길 I이 열립니다'], req: 'nm2' },
   { id: 'nether',  name: '저승길 I',   hp: 3.3, count: 1.4,  boss: 3.9, edmg: 1.6,  income: 1.0, mem: 3.5, trait: 'fire', theme: 'nether', revive: 0.15, ghost: 0.35, note: ['꽃무릇이 핀 저승 들판', '쓰러진 적의 15%가 원혼으로 다시 일어납니다 (체력 35%)'], req: 'nm3' },
@@ -219,6 +237,126 @@ const BOSS_TRAITS = {
   adapt: { name: '적응하는 원귀', desc: '20초마다 그동안 가장 많이 맞은 무기 종류에 10초 동안 70% 저항' },
 };
 const DIFF = Object.fromEntries(DIFFS.map(d => [d.id, d]));
+
+// ───────────────────────── 봉수로 지도 ─────────────────────────
+// The five main beacon routes of Joseon (오봉수로) carried fire from the borders to the capital. Each route here is
+// five short legs; clearing a route opens the next, and when all five are done, 목멱산 in the capital opens last.
+const RULES = {
+  rich:  { name: '장시',     desc: '장이 서는 고을. 수입 ×1.3',                 apply: d => { d.income *= 1.3; } },
+  poor:  { name: '흉년',     desc: '수입 ×0.75',                                  apply: d => { d.income *= 0.75; } },
+  fog:   { name: '안개',     desc: '모든 무기 사거리 -20%',                       apply: d => { d.range = (d.range || 0) - 0.2; } },
+  swarm: { name: '떼',       desc: '적 수 ×1.4, 체력 ×0.8',                       apply: d => { d.count *= 1.4; d.hp *= 0.8; } },
+  elite: { name: '정예',     desc: '적 체력 ×1.35, 수 ×0.8',                      apply: d => { d.hp *= 1.35; d.count *= 0.8; } },
+  ghost: { name: '원혼',     desc: '쓰러진 적의 15%가 원혼으로 한 번 더 일어남',   apply: d => { d.revive = 0.15; d.ghost = 0.35; } },
+  dark:  { name: '먹구름',   desc: '하늘이 가려 천벌을 쓸 수 없음',               apply: d => { d.noSmite = true; } },
+  cold:  { name: '혹한',     desc: '적이 15% 느리지만 체력 +20%',                 apply: d => { d.spd = 0.85; d.hp *= 1.2; } },
+  rush:  { name: '급보',     desc: '라운드가 25초로 짧아짐',                      apply: d => { d.roundTime = 25; } },
+  armor: { name: a => ({ light: '날랜 무리', medium: '산적 소굴', heavy: '철기', fort: '돌산길' })[a], desc: a => `주력 갑옷이 자주 ${ARMORS[a].name}`, apply: (d, a) => { d.armorBias = a; } },
+  shop:  { name: t => `${TYPES[t].name} 장터`, desc: t => `상점 무기의 절반 넘게가 ${TYPES[t].name}`, apply: (d, t) => { d.shopType = t; } },
+  trait: { name: t => BOSS_TRAITS[t].name, desc: t => `보스 특성 · ${BOSS_TRAITS[t].desc}`, apply: (d, t) => { d.trait = t; } },
+};
+const ruleOf = r => { const [k, a] = r.split(':'); return [RULES[k], a]; };
+const ruleName = r => { const [x, a] = ruleOf(r); return typeof x.name === 'function' ? x.name(a) : x.name; };
+const ruleDesc = r => { const [x, a] = ruleOf(r); return typeof x.desc === 'function' ? x.desc(a) : x.desc; };
+const ROUTES = [
+  { id: 'r2', name: '동래길', no: '제2거', from: '동래 다대포에서 광주 천림산까지', color: '#d8503a', theme: 'field', base: 1.0, stages: [
+    { id: 'dadaepo', name: '다대포', at: [128.97, 35.05], rules: [] },
+    { id: 'gyeongju', name: '경주', at: [129.22, 35.85], rules: ['rich'] },
+    { id: 'andong', name: '안동', at: [128.73, 36.57], rules: ['armor:fort'], theme: 'autumn' },
+    { id: 'chungju', name: '충주', at: [127.93, 36.99], rules: ['swarm'], theme: 'autumn' },
+    { id: 'cheollim', name: '천림산', at: [127.1, 37.42], rules: ['trait:scale'] } ] },
+  { id: 'r5', name: '남해길', no: '제5거', from: '순천 돌산포에서 양천 개화산까지', color: '#3f8fb8', theme: 'field', base: 1.25, stages: [
+    { id: 'dolsan', name: '돌산포', at: [127.75, 34.7], rules: ['fog'] },
+    { id: 'haenam', name: '해남', at: [126.6, 34.57], rules: ['rich', 'elite'] },
+    { id: 'buan', name: '부안', at: [126.73, 35.73], rules: ['shop:arrow'] },
+    { id: 'seosan', name: '서산', at: [126.45, 36.78], rules: ['fog', 'ghost'], theme: 'night' },
+    { id: 'gaehwa', name: '개화산', at: [126.81, 37.58], rules: ['trait:wind'] } ] },
+  { id: 'r1', name: '관북길', no: '제1거', from: '경흥 서수라에서 양주 아차산까지', color: '#6fb6d8', theme: 'snow', base: 1.5, stages: [
+    { id: 'seosura', name: '서수라', at: [130.67, 42.3], rules: ['cold'] },
+    { id: 'hoeryeong', name: '회령', at: [129.75, 42.44], rules: ['cold', 'dark'] },
+    { id: 'hamheung', name: '함흥', at: [127.53, 39.92], rules: ['armor:heavy'] },
+    { id: 'cheorwon', name: '철원', at: [127.31, 38.15], rules: ['cold', 'swarm'] },
+    { id: 'acha', name: '아차산', at: [127.1, 37.57], rules: ['trait:pure'], theme: 'field' } ] },
+  { id: 'r3', name: '강계길', no: '제3거', from: '강계 만포진에서 무악 동봉까지', color: '#8a5ad8', theme: 'night', base: 1.75, stages: [
+    { id: 'manpo', name: '만포진', at: [126.25, 41.15], rules: ['swarm'] },
+    { id: 'ganggye', name: '강계', at: [126.6, 40.97], rules: ['ghost'] },
+    { id: 'yeongbyeon', name: '영변', at: [125.8, 39.81], rules: ['poor', 'shop:charm'] },
+    { id: 'pyeongyang', name: '평양', at: [125.75, 39.03], rules: ['swarm', 'ghost'] },
+    { id: 'muak_e', name: '무악 동봉', at: [126.95, 37.58], rules: ['trait:fire'] } ] },
+  { id: 'r4', name: '의주길', no: '제4거', from: '의주에서 무악 서봉까지', color: '#c99a2e', theme: 'autumn', base: 2.0, stages: [
+    { id: 'uiju', name: '의주', at: [124.53, 40.2], rules: ['armor:heavy'] },
+    { id: 'jeongju', name: '정주', at: [125.2, 39.7], rules: ['rush'] },
+    { id: 'haeju', name: '해주', at: [125.72, 38.04], rules: ['fog'], theme: 'night' },
+    { id: 'gaeseong', name: '개성', at: [126.55, 37.97], rules: ['rush', 'dark'], theme: 'night' },
+    { id: 'muak_w', name: '무악 서봉', at: [126.94, 37.58], rules: ['trait:break'] } ] },
+];
+const FINALE = { id: 'mongmyeok', name: '목멱산', at: [126.99, 37.55], rules: ['trait:adapt'], theme: 'night' };
+// Every leg in the same place along a route plays alike: longer, and ending on a bigger boss.
+const LEG = [
+  { rounds: 12, boss: 'chief', bossHp: 0.8,  mid: {} },
+  { rounds: 15, boss: 'chief', bossHp: 1.2,  mid: {} },
+  { rounds: 18, boss: 'bulga', bossHp: 0.6,  mid: { 10: 'chief' } },
+  { rounds: 20, boss: 'bulga', bossHp: 0.85, mid: { 10: 'chief' } },
+  { rounds: 24, boss: 'gumiho', bossHp: 0.45, mid: { 10: 'chief', 20: 'bulga' } },
+];
+const STAGES = [];
+ROUTES.forEach((rt, ri) => rt.stages.forEach((st, si) => {
+  const leg = LEG[si], k = rt.base * (1 + 0.1 * si);
+  STAGES.push(Object.assign({ route: rt, ri, si, theme: rt.theme, rounds: leg.rounds, boss: leg.boss, bossHp: leg.bossHp * k, mid: leg.mid,
+    treasure: [5, 15].filter(r => r < leg.rounds), hp: k, count: 0.95 + 0.05 * ri + 0.03 * si, midBoss: k * 0.8, edmg: 1 + (k - 1) * 0.45,
+    mem: +(0.9 + ri * 0.35 + si * 0.1).toFixed(2), bonus: Math.round(20 + si * 8 + ri * 12) }, st));
+}));
+STAGES.push(Object.assign({ route: null, ri: 5, si: 0, rounds: 30, boss: 'dragon', bossHp: 1.2, mid: { 10: 'chief', 20: 'bulga' }, treasure: [5, 15, 25],
+  hp: 2.6, count: 1.3, midBoss: 2.3, edmg: 1.7, mem: 3.0, bonus: 200 }, FINALE));
+const STAGE = Object.fromEntries(STAGES.map(s => [s.id, s]));
+// The run's difficulty for a leg: the leg's own numbers, then its rules.
+function stageDiff(st) {
+  const d = { id: 'map', name: st.name, hp: st.hp, count: st.count, boss: st.midBoss, edmg: st.edmg, income: 1, mem: st.mem, theme: st.theme, note: [] };
+  for (const r of st.rules) { const [x, a] = ruleOf(r); x.apply(d, a); }
+  return d;
+}
+
+const routeDone = (rt, p) => rt.stages.every(st => p.map[st.id] && p.map[st.id].clears > 0);
+
+// 업적: once earned, any of them can be worn as a 칭호 next to your name in 명예의 전당. `goal` shows progress.
+const ACHS = [
+  { id: 'first', g: '진행', name: '첫 출정', title: '신참 봉수군', desc: '첫 판을 마칩니다' },
+  { id: 'w_easy', g: '진행', name: '첫 봉화', title: '봉수군', desc: '쉬움에서 이깁니다' },
+  { id: 'w_normal', g: '진행', name: '보통의 봉화', title: '파수꾼', desc: '보통에서 이깁니다' },
+  { id: 'w_hard', g: '진행', name: '가을 산을 넘어', title: '봉수장', desc: '어려움에서 이깁니다' },
+  { id: 'w_nm1', g: '진행', name: '첫 악몽', title: '악몽을 걷는 자', desc: '악몽 I에서 이깁니다' },
+  { id: 'w_nm3', g: '진행', name: '악몽의 끝', title: '새벽을 부른 자', desc: '악몽 III에서 이깁니다' },
+  { id: 'w_nether', g: '진행', name: '저승 문턱', title: '저승을 거닌 자', desc: '저승길 I에서 이깁니다' },
+  { id: 'w_nether3', g: '진행', name: '저승의 끝', title: '불멸의 수호자', desc: '저승길 III에서 이깁니다' },
+  { id: 'runs10', g: '쌓기', name: '열 번의 봉화', title: '단골 수호자', desc: '10판을 마칩니다', goal: p => [p.runs, 10] },
+  { id: 'runs50', g: '쌓기', name: '쉰 번의 봉화', title: '백전노장', desc: '50판을 마칩니다', goal: p => [p.runs, 50] },
+  { id: 'runs100', g: '쌓기', name: '백 번의 봉화', title: '봉화의 화신', desc: '100판을 마칩니다', goal: p => [p.runs, 100] },
+  { id: 'kills5k', g: '쌓기', name: '도깨비 사냥', title: '도깨비 사냥꾼', desc: '적을 모두 5,000 쓰러뜨립니다', goal: p => [p.stats.kills, 5000] },
+  { id: 'kills50k', g: '쌓기', name: '추풍낙엽', title: '만 명을 벤 자', desc: '적을 모두 50,000 쓰러뜨립니다', goal: p => [p.stats.kills, 50000] },
+  { id: 'bosses20', g: '쌓기', name: '토벌대', title: '토벌대장', desc: '보스를 모두 20 쓰러뜨립니다', goal: p => [p.stats.bosses, 20] },
+  { id: 'treasure10', g: '쌓기', name: '보물 사냥', title: '보물 사냥꾼', desc: '보물 도깨비를 모두 10 잡습니다', goal: p => [p.stats.treasures, 10] },
+  { id: 'perk1', g: '쌓기', name: '배움의 길', title: '배우는 수호자', desc: '수호 기억을 모두 1단계 이상 배웁니다', goal: p => [PERKS.filter(x => (p.perks[x.id] || 0) >= 1).length, PERKS.length] },
+  { id: 'perkmax', g: '쌓기', name: '천년의 기억', title: '천년 수호자', desc: '수호 기억을 모두 끝까지 배웁니다', goal: p => [PERKS.filter(x => (p.perks[x.id] || 0) >= x.max).length, PERKS.length] },
+  { id: 'nosmite', g: '도전', name: '하늘에 기대지 않고', title: '스스로 선 자', desc: '천벌을 쓰지 않고 이깁니다' },
+  { id: 'mono', g: '도전', name: '외길', title: '외길 무사', desc: '한 종류 무기만 사서 이깁니다' },
+  { id: 'all5', g: '도전', name: '오방', title: '오방장군', desc: '다섯 종류 무기를 모두 지닌 채 이깁니다' },
+  { id: 'noeco', g: '도전', name: '맨손 살림', title: '청렴한 관리', desc: '경제 물건 없이 이깁니다' },
+  { id: 'clutch', g: '도전', name: '구사일생', title: '구사일생', desc: '체력 10% 이하로 이깁니다' },
+  { id: 'flawless', g: '도전', name: '흠 없는 봉화', title: '철옹성', desc: '홰가 하나도 꺼지지 않고 이깁니다' },
+  { id: 'dragon60', g: '도전', name: '번개 토벌', title: '용 잡는 자', desc: '흑룡을 60초 안에 쓰러뜨립니다' },
+  { id: 'treasure4', g: '도전', name: '복 받은 날', title: '복 받은 자', desc: '한 판에 보물 도깨비 넷을 모두 잡습니다' },
+  { id: 'kills1500', g: '도전', name: '구름 같은 적', title: '천하장사', desc: '한 판에 적 1,500을 쓰러뜨립니다' },
+  { id: 'set3', g: '도전', name: '장인의 길', title: '장인', desc: '무기 세트 하나를 마지막 단계까지 켭니다' },
+  { id: 'elem2', g: '도전', name: '오행 통달', title: '도사', desc: '속성 세트 둘을 함께 2단계로 켭니다' },
+  { id: 'ranked', g: '겨룸', name: '첫 겨룸', title: '겨루는 자', desc: '주간 랭킹전에 나갑니다' },
+  { id: 'rankwin', g: '겨룸', name: '명예의 전당', title: '명예로운 수호자', desc: '주간 랭킹전에서 이깁니다' },
+  { id: 'route1', g: '봉수로', name: '첫 봉수로', title: '봉수로 순찰사', desc: '봉수로 하나를 한양까지 잇습니다' },
+  { id: 'route5', g: '봉수로', name: '다섯 봉수로', title: '팔도 순찰사', desc: '다섯 봉수로를 모두 잇습니다', goal: p => [ROUTES.filter(rt => routeDone(rt, p)).length, ROUTES.length] },
+  { id: 'capital', g: '봉수로', name: '목멱산 봉화', title: '도성 봉수대장', desc: '목멱산에서 흑룡을 쓰러뜨립니다' },
+];
+const ACH = Object.fromEntries(ACHS.map(a => [a.id, a]));
+// 도전 achievements count only in 40-round runs on 보통 or harder (주간 랭킹전 included).
+const ACH_HARD = ['nosmite', 'mono', 'all5', 'noeco', 'clutch', 'flawless'];
 
 // 수호 기억: permanent perks bought with memory shards earned from every run.
 const PERKS = [
@@ -249,6 +387,15 @@ const giftTier = r => Math.min(3, 1 + Math.floor(r / 15));
 
 // 봉수 소식: newest first. A new `id` lights the NEW mark on the title screen until the player opens it.
 const NEWS = [
+  { id: '2026-10-18a', date: '10월 18일', title: '대규모 패치: 봉수로 지도 · 업적과 칭호 · 새 무기와 적', items: [
+    '<b>봉수로 지도</b>가 열렸습니다. 조선의 다섯 봉수로(동래길 · 남해길 · 관북길 · 강계길 · 의주길) 25구간을 하나씩 이어 한양 목멱산까지 봉화를 올리는 모드입니다. 구간마다 라운드 수와 규칙(안개, 큰 장, 혹한, 돌격 등)이 다르고, 처음 봉화를 올리면 기억 조각을 더 받습니다.',
+    '다섯 길을 모두 이으면 마지막 봉화 <b>목멱산</b>이 열립니다. 관북길은 눈 덮인 전장에서 싸웁니다.',
+    '<b>업적 33개와 칭호</b>가 생겼습니다. 업적을 이루면 칭호를 얻고, 하나를 골라 달면 명예의 전당에서 이름 옆에 보입니다. 이미 이룬 승리 · 판수 · 수호 기억은 바로 인정되고, 처치 수 같은 누적 기록은 오늘부터 셉니다.',
+    '<b>새 물건 13가지</b>: 월도, 쇠뇌, 수노기, 낙인부, 결계부, 질려포통, 파진포, 요괴 호리병, 삼족오, 토벌 비책, 세곡선, 봉수 신호, 마름쇠. 도감에서 자세히 볼 수 있습니다.',
+    '<b>새 적</b>: 창귀(6라운드부터 셋씩 무리 지어 옴), 그슨대(12라운드부터, 쓰러지면 그림자 둘로 갈라짐).',
+    '<b>악몽 I 조정</b>: 10라운드 두억시니에서 너무 많이 막혀서 조금 쉽게 했습니다. 적 체력 ×1.8 → ×1.65, 적 수 ×1.2 → ×1.15, 보스 체력 ×2.0 → ×1.65, 적 공격 ×1.3 → ×1.25. 악몽 II부터는 그대로입니다.',
+    '새 물건과 적은 이번 주(W43) 주간 랭킹전부터 함께 나옵니다.',
+  ] },
   { id: '2026-10-14g', date: '10월 14일', title: '첫 출정 안내', items: [
     '처음 하는 분을 위해 봉수군이 필요한 순간마다 한 가지씩 알려 줍니다: 봉수대 체력, 무기 사기, 상성, 엽전, 새로고침, 세트, 천벌, 보물 도깨비, 수호 기억.',
     '처음이면 난이도 선택에서 쉬움이 먼저 골라져 있습니다. 안내는 언제든 끌 수 있고, 설정의 "첫 출정 안내 다시 보기"로 다시 볼 수 있습니다.',

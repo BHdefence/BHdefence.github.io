@@ -17,12 +17,13 @@ const stackCapped = id => ITEM[id].cat !== 'weapon' && owned(id) >= STACK_MAX;
 
 // ───────────────────────── profile (persistent) ─────────────────────────
 const SAVE_KEY = 'bonghwa-v1';
-function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, playSec: 0, netherAt: 0, tutorial: false, seen: [], sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [], owner: '', savedAt: 0 }; }
+function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, playSec: 0, netherAt: 0, tutorial: false, seen: [], sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [],
+  map: {}, ach: {}, title: '', stats: { kills: 0, bosses: 0, treasures: 0 }, owner: '', savedAt: 0 }; }
 const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 const cleanNick = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12);
 function cleanRec(id, d) {
   if (!d || typeof d !== 'object') return null;
-  return { id, week: String(d.week || '').slice(0, 10), score: Math.max(0, Math.floor(num(d.score))), round: clamp(Math.floor(num(d.round)), 0, ROUNDS + 1), win: !!d.win, kills: Math.max(0, Math.floor(num(d.kills))), nick: cleanNick(d.nick) || '무명', at: num(d.at) };
+  return { id, title: String(d.title || '').slice(0, 16), week: String(d.week || '').slice(0, 10), score: Math.max(0, Math.floor(num(d.score))), round: clamp(Math.floor(num(d.round)), 0, ROUNDS + 1), win: !!d.win, kills: Math.max(0, Math.floor(num(d.kills))), nick: cleanNick(d.nick) || '무명', at: num(d.at) };
 }
 function sanitizeProfile(o) {
   const p = newProfile(); if (!o || typeof o !== 'object') return p;
@@ -33,6 +34,10 @@ function sanitizeProfile(o) {
   p.tutorial = !!o.tutorial; p.seen = Array.isArray(o.seen) ? o.seen.filter(x => typeof x === 'string').slice(0, 20) : []; p.sound = o.sound !== false; p.music = o.music !== false; p.nick = cleanNick(o.nick);
   if (o.ranked && typeof o.ranked === 'object') p.ranked = { day: String(o.ranked.day || '').slice(0, 10), used: clamp(Math.floor(num(o.ranked.used)), 0, 9) };
   if (Array.isArray(o.records)) p.records = o.records.slice(0, 30).map(r => cleanRec('local', r)).filter(Boolean);
+  if (o.map && typeof o.map === 'object') for (const st of STAGES) { const m = o.map[st.id]; if (m && typeof m === 'object') p.map[st.id] = { best: clamp(Math.floor(num(m.best)), 0, st.rounds + 1), clears: Math.max(0, Math.floor(num(m.clears))) }; }
+  if (o.ach && typeof o.ach === 'object') for (const a of ACHS) if (o.ach[a.id]) p.ach[a.id] = num(o.ach[a.id], 1) || 1;
+  p.title = ACH[o.title] && p.ach[o.title] ? o.title : '';
+  if (o.stats && typeof o.stats === 'object') for (const k of ['kills', 'bosses', 'treasures']) p.stats[k] = Math.max(0, Math.floor(num(o.stats[k])));
   p.owner = typeof o.owner === 'string' ? o.owner.slice(0, 64) : ''; // the account this copy belongs to ('' = guest)
   p.savedAt = num(o.savedAt);
   return p;
@@ -228,13 +233,17 @@ function musicMood() {
 let R = null, mode = 'menu', paused = false, speed = 1, uidSeq = 0, eidSeq = 0;
 const rngFor = (...parts) => mulberry32(hashStr(R.seed + ':' + parts.join(':')));
 
-function newRun(diffId, ranked) {
-  const d = DIFF[diffId]; noPerks = !!ranked;
+// A run is a standard 40-round game on one difficulty, the weekly ranked game, or one leg of 봉수로 지도 (`stage`),
+// which is shorter, ends on its own boss and plays by its rules.
+function newRun(diffId, ranked, stage) {
+  const d = stage ? stageDiff(stage) : DIFF[diffId]; noPerks = !!ranked;
   R = {
-    diff: d, ranked: !!ranked, seed: ranked ? 'week:' + weekId() : 'run:' + Date.now() + ':' + ((Math.random() * 1e9) | 0),
+    diff: d, ranked: !!ranked, stage: stage || null, rounds: stage ? stage.rounds : ROUNDS, mid: stage ? stage.mid : MID_BOSS, treasureRounds: stage ? stage.treasure : TREASURE_ROUNDS,
+    finalKind: stage ? stage.boss : 'dragon', roundTime: d.roundTime || ROUND_TIME, track: { smites: 0, minHp: 1, treasures: 0, bosses: 0, eco: false, types: new Set(), set3: false, elem2: false },
+    seed: ranked ? 'week:' + weekId() : 'run:' + Date.now() + ':' + ((Math.random() * 1e9) | 0),
     round: 0, t: PREP_TIME, elapsed: 0, time: 0, gold: BASE.gold + perkRun('gold') * 60, hp: 0, shieldNow: 0,
-    items: [], weapons: [], enemies: [], shots: [], fx: [], nums: [], spawnQ: [], shop: [],
-    kills: 0, smites: BASE.smites + perkRun('smite'), freeRerolls: 0, paidRerolls: 0, rerollIdx: 0, halfOff: false, bonusDmg: 0,
+    items: [], weapons: [], enemies: [], shots: [], fx: [], nums: [], spawnQ: [], shop: [], fields: [],
+    kills: 0, smites: d.noSmite ? 0 : BASE.smites + perkRun('smite'), freeRerolls: 0, paidRerolls: 0, rerollIdx: 0, halfOff: false, bonusDmg: 0,
     state: 'run', final: false, gift: null, showRange: false, banner: null, shake: 0, flash: 0, thornDealt: 0,
     armorSeq: [],
   };
@@ -244,10 +253,11 @@ function newRun(diffId, ranked) {
   return R;
 }
 function genArmorSeq() {
-  const rng = rngFor('armor'), seq = [null];
-  for (let r = 1; r <= ROUNDS + 1; r++) {
+  const rng = rngFor('armor'), seq = [null], bias = R.diff.armorBias;
+  for (let r = 1; r <= R.rounds + 1; r++) {
     const allowed = r <= 3 ? ['light', 'medium'] : r <= 7 ? ['light', 'medium', 'heavy'] : ARMOR_IDS;
     let a = allowed[(rng() * allowed.length) | 0];
+    if (bias && allowed.includes(bias) && rng() < 0.5) a = bias;
     if (seq[r - 1] === a && seq[r - 2] === a) a = allowed[(allowed.indexOf(a) + 1) % allowed.length];
     seq.push(a);
   }
@@ -257,11 +267,12 @@ const hpMul = r => Math.pow(1.15, Math.max(0, r - 1)) * R.diff.hp;
 
 function computeStats() {
   const s = {
-    dmg: perkRun('might') * 0.03 + R.bonusDmg, typeDmg: { blade: 0, arrow: 0, charm: 0, cannon: 0, chaos: 0 }, aspd: 0, range: 0,
+    dmg: perkRun('might') * 0.03 + R.bonusDmg, typeDmg: { blade: 0, arrow: 0, charm: 0, cannon: 0, chaos: 0 }, aspd: 0,
     crit: BASE.crit, critMul: BASE.critMul, elemPow: { fire: 0, frost: 0, poison: 0, bolt: 0 },
-    income: (BASE.income + perkRun('income') * 0.6) * R.diff.income, bounty: 0, interest: 0, interestCap: 0,
+    income: (BASE.income + perkRun('income') * 0.6) * R.diff.income, bounty: 0, interest: 0, interestCap: 0, range: R.diff.range || 0,
     maxHp: Math.round(BASE.hp * (1 + perkRun('hp') * 0.06)), regen: BASE.regen, shield: 0, dr: 0, thorn: 0, thornPow: 0,
     freeRerolls: BASE.freeRerolls + perkRun('reroll'), typeCount: {}, elemCount: {}, typeStep: {}, elemStep: {}, thornElems: [],
+    bossDmg: 0, roundGold: 0, roundGoldPer: 0, thornSlow: 0,
   };
   // Sets count DIFFERENT items: stacking copies of one weapon (×2, ×3) adds its firepower but not set progress.
   // Other items lose strength as they stack (stackEff); interest never stacks, the best one applies.
@@ -278,15 +289,17 @@ function computeStats() {
       s.income += a(d.income); s.bounty += a(d.bounty);
       if ((d.interest || 0) > s.interest) { s.interest = d.interest; s.interestCap = d.interestCap; }
       s.maxHp += Math.round(a(d.maxHp)); s.regen += a(d.regen); s.shield += Math.round(a(d.shield)); s.dr += a(d.dr);
-      s.thorn += a(d.thorn); s.thornPow += a(d.thornPow);
+      s.thorn += a(d.thorn); s.thornPow += a(d.thornPow); s.thornSlow += a(d.thornSlow);
+      s.bossDmg += a(d.bossDmg); s.roundGold += a(d.roundGold); s.roundGoldPer += a(d.roundGoldPer);
       if (d.cat === 'thorn' && d.elem) s.thornElems.push(d.elem);
     }
     if (first) for (const e of [d.elem, d.elem2]) if (e) s.elemCount[e] = (s.elemCount[e] || 0) + 1;
   }
-  s.dr = Math.min(0.6, s.dr);
+  s.dr = Math.min(0.6, s.dr); s.thornSlow = Math.min(0.7, s.thornSlow);
   for (const t of TYPE_IDS) { const n = s.typeCount[t] || 0, step = setSteps(t).filter(x => n >= x).length; s.typeStep[t] = step; if (step) s.typeDmg[t] += TYPE_SET_DMG[step - 1]; }
   for (const e of ELEM_IDS) { const n = s.elemCount[e] || 0; s.elemStep[e] = ELEM_SET_STEPS.filter(x => n >= x).length; }
   s.chaosMin = s.typeStep.chaos >= 2 ? 0.9 : 0.5;
+  if (R.track) { if (TYPE_IDS.some(t => s.typeStep[t] >= setSteps(t).length)) R.track.set3 = true; if (ELEM_IDS.filter(e => s.elemStep[e] >= 2).length >= 2) R.track.elem2 = true; }
   return s;
 }
 function refreshStats() {
@@ -298,13 +311,16 @@ function refreshStats() {
 
 // ───────────────────────── rounds & spawns ─────────────────────────
 function startRound(r) {
-  R.round = r; R.t = ROUND_TIME; R.elapsed = 0;
-  if (r > 1 && R.S.interest > 0) { const gain = Math.min(R.S.interestCap, Math.floor(R.gold * R.S.interest)); if (gain > 0) { R.gold += gain; toast(`이자 +${fmt(gain)}냥`); } }
+  R.round = r; R.t = R.roundTime; R.elapsed = 0;
+  const paid = [];
+  if (r > 1 && R.S.interest > 0) { const gain = Math.min(R.S.interestCap, Math.floor(R.gold * R.S.interest)); if (gain > 0) { R.gold += gain; paid.push(`이자 +${fmt(gain)}냥`); } }
+  if (R.S.roundGold > 0) { const gain = Math.round(R.S.roundGold + R.S.roundGoldPer * r); R.gold += gain; paid.push(`세곡선 +${fmt(gain)}냥`); }
+  if (paid.length) toast(paid.join(' · '));
   R.shieldNow = R.S.shield; R.freeRerolls = R.S.freeRerolls; R.paidRerolls = 0; R.rerollIdx = 0; rollShop();
   R.spawnQ = genSpawns(r);
-  const boss = MID_BOSS[r];
+  const boss = R.mid[r];
   if (boss) { banner(`${r} 라운드`, `${FOES[boss].name} 출현${R.diff.trait ? ` · ${BOSS_TRAITS[R.diff.trait].name}` : ''}`, 'boss', '경보'); Sfx.play('boss'); bumpField(); }
-  else if (TREASURE_ROUNDS.includes(r)) { banner(`${r} 라운드`, '보물 도깨비가 나타났습니다', 'gold', '보물'); Sfx.play('gift'); }
+  else if (R.treasureRounds.includes(r)) { banner(`${r} 라운드`, '보물 도깨비가 나타났습니다', 'gold', '보물'); Sfx.play('gift'); }
   else { banner(`${r} 라운드`, `이번 주력 ${ARMORS[R.armorSeq[r]].name}`); Sfx.play('horn'); }
   renderShop(); renderHud(true);
 }
@@ -312,20 +328,21 @@ function genSpawns(r) {
   const rng = rngFor('spawn', r), prim = R.armorSeq[r], allowed = r <= 3 ? ['light', 'medium'] : r <= 7 ? ['light', 'medium', 'heavy'] : ARMOR_IDS;
   const q = [], n = Math.round((10 + r * 0.7) * R.diff.count);
   for (let i = 0; i < n; i++) {
-    const armor = rng() < 0.7 ? prim : allowed[(rng() * allowed.length) | 0], pool = POOL[armor];
+    const armor = rng() < 0.7 ? prim : allowed[(rng() * allowed.length) | 0], pool = poolAt(armor, r);
     q.push({ t: 0.4 + rng() * 19, kind: pool[(rng() * pool.length) | 0], side: (rng() * 4) | 0, along: rng() });
   }
-  if (MID_BOSS[r]) q.push({ t: 1.2, kind: MID_BOSS[r], side: (rng() * 4) | 0, along: 0.5 });
-  if (TREASURE_ROUNDS.includes(r)) q.push({ t: 2, kind: 'treasure', side: (rng() * 4) | 0, along: 0.5 });
+  if (R.mid[r]) q.push({ t: 1.2, kind: R.mid[r], side: (rng() * 4) | 0, along: 0.5 });
+  if (R.treasureRounds.includes(r)) q.push({ t: 2, kind: 'treasure', side: (rng() * 4) | 0, along: 0.5 });
   return q.sort((a, b) => a.t - b.t);
 }
 function startFinal() {
-  R.final = true; R.round = ROUNDS + 1; R.t = Infinity; R.shieldNow = R.S.shield; R.finalAt = R.time;
-  spawnFoe('dragon', 0, 0.5);
-  banner('최종 결전', `흑룡이 깨어났습니다${R.diff.trait ? ` · ${BOSS_TRAITS[R.diff.trait].name}` : ''}`, 'boss', '결전'); Sfx.play('boss'); bumpField(); renderHud(true);
+  R.final = true; R.round = R.rounds + 1; R.t = Infinity; R.shieldNow = R.S.shield; R.finalAt = R.time;
+  const e = spawnFoe(R.finalKind, 0, 0.5), nm = FOES[R.finalKind].name;
+  e.stageFinal = true; if (R.stage) e.hp = e.max = FOES[R.finalKind].hp * R.stage.bossHp;
+  banner('최종 결전', `${R.finalKind === 'dragon' ? '흑룡이 깨어났습니다' : `${josa(nm, '이', '가')} 길을 막습니다`}${R.diff.trait ? ` · ${BOSS_TRAITS[R.diff.trait].name}` : ''}`, 'boss', '결전'); Sfx.play('boss'); bumpField(); renderHud(true);
 }
 function spawnFoe(kind, side, along, at) {
-  const d = FOES[kind], r = Math.min(R.round, ROUNDS);
+  const d = FOES[kind], r = Math.min(R.round, R.rounds);
   let x, y;
   if (at) { x = at.x; y = at.y; }
   else if (side === 0) { x = CX + (along - 0.5) * 150; y = -12; }
@@ -334,10 +351,10 @@ function spawnFoe(kind, side, along, at) {
   else { x = -12; y = CY + (along - 0.5) * 130; }
   const hp = d.boss ? d.hp * R.diff.boss : d.treasure ? d.hp * hpMul(r) * 0.6 : d.hp * hpMul(r);
   const e = {
-    id: ++eidSeq, kind, d, x, y, hp, max: hp, spd: d.spd * (1 + 0.004 * r), dmg: d.dmg * (1 + 0.06 * (r - 1)) * R.diff.edmg, cd: d.cd, atkT: d.cd * 0.5,
+    id: ++eidSeq, kind, d, x, y, hp, max: hp, spd: d.spd * (1 + 0.004 * r) * (R.diff.spd || 1), dmg: d.dmg * (1 + 0.06 * (r - 1)) * R.diff.edmg, cd: d.cd, atkT: d.cd * 0.5,
     r: d.r, armor: d.armor === 'cycle' ? 'light' : d.armor, cycleIdx: 0, bounty: d.bounty * (1 + 0.05 * (r - 1)), boss: !!d.boss, face: x > CX ? 1 : -1,
     anim: Math.random(), flash: 0, lunge: 0, slowT: 0, slowF: 0, freezeT: 0, stunT: 0, burnT: 0, burnDps: 0, burnSrc: null,
-    poisonT: 0, pStacks: 0, pDps: 0, pSrc: null, dotAcc: 0, dotTick: 0.5, sumT: 6, skillT: 4, life: 0, orbit: Math.atan2(y - CY, x - CX), fleeing: false,
+    poisonT: 0, pStacks: 0, pDps: 0, pSrc: null, dotAcc: 0, dotTick: 0.5, markT: 0, sumT: 6, skillT: 4, life: 0, orbit: Math.atan2(y - CY, x - CX), fleeing: false,
   };
   R.enemies.push(e);
   return e;
@@ -354,8 +371,9 @@ function rollShop() {
   R.shop = [];
   for (let i = 0; i < 8; i++) {
     const cat = cats[wpick(rng, cw)]; let tier = wpick(rng, tierWeights(Math.max(1, R.round)));
+    const only = cat === 'weapon' && R.diff.shopType && rng() < 0.6 ? R.diff.shopType : null; // '○○ 장터' rule
     let cands = [];
-    while (tier >= 0 && !(cands = ITEMS.filter(it => it.cat === cat && it.tier === tier)).length) tier--;
+    while (tier >= 0 && !(cands = ITEMS.filter(it => it.cat === cat && it.tier === tier && (!only || it.type === only))).length) tier--;
     R.shop.push({ id: cands[(rng() * cands.length) | 0].id, sold: false });
   }
   // 첫 출정 안내: until the first weapon is bought, the first stall always holds a cheap weapon strong against the coming armor
@@ -395,6 +413,8 @@ function flyToBag(from, it) {
 function addItem(id) {
   const it = { uid: ++uidSeq, id, t: Math.random() * 0.3, dealt: 0, since: R.time };
   R.items.push(it); refreshStats();
+  if (ITEM[id].cat === 'eco') R.track.eco = true; if (ITEM[id].cat === 'weapon') R.track.types.add(ITEM[id].type);
+  if (ITEM[id].smites) { R.smites += ITEM[id].smites; renderHud(true); } // 봉수 신호
 }
 function sellItem(uid) {
   const i = R.items.findIndex(x => x.uid === uid); if (i < 0) return;
@@ -424,6 +444,7 @@ function nearOf(e0, radius, exclude) { let best = null, bd = radius; for (const 
 function calcDmg(def, e) {
   const S = R.S, t = def.type, bt = e.boss && BOSS_TRAITS[R.diff.trait]; let d = def.dmg * (1 + S.dmg + S.typeDmg[t]), strong = false;
   if (bt) { if (bt.half === t) d *= 0.5; if (e.resistT > 0 && e.resist === t) d *= 0.3; }
+  if (e.boss) d *= 1 + (def.bossDmg || 0) + S.bossDmg;
   if (t === 'chaos') d *= bt && R.diff.trait === 'break' ? 0.5 + Math.random() * 0.5 : S.chaosMin + Math.random() * (2 - S.chaosMin);
   else if (TYPES[t].strong === e.armor) { d *= 2; strong = true; }
   const critChance = S.crit + (def.crit || 0) + (t === 'arrow' && S.typeStep.arrow >= 2 ? 0.08 : 0), crit = Math.random() < critChance;
@@ -442,7 +463,11 @@ function updateWeapons(dt) {
 const TOP = { x: CX, y: CY - 36 };
 function fire(w, def, tg, range) {
   const S = R.S;
-  if (def.multi) { for (const t of nearestN(range, def.multi + (S.typeStep.charm >= 2 ? 1 : 0))) shot(w, def, t, 0); }
+  if (def.sweep) { // 월도: one wide cut around the beacon hits everything close
+    for (const e of R.enemies) if (e.hp > 0 && onField(e) && distC(e) - e.r <= range) hitWith(w, def, e, 1, true);
+    R.fx.push({ k: 'sweep', x: CX, y: CY - 6, r: range, t: 0, life: 0.22, a0: Math.random() * Math.PI * 2 });
+  }
+  else if (def.multi) { for (const t of nearestN(range, def.multi + (S.typeStep.charm >= 2 ? 1 : 0))) shot(w, def, t, 0); }
   else {
     const n = def.shots || 1, pool = n > 1 ? nearestN(range, 6) : null;
     for (let i = 0; i < n; i++) shot(w, def, i === 0 ? tg : pool[(Math.random() * pool.length) | 0], i * 0.07);
@@ -510,6 +535,7 @@ function stepShot(s, dt) {
 }
 function boom(w, def, x, y, r) {
   for (const e of R.enemies) if (e.hp > 0 && Math.hypot(e.x - x, e.y - 4 - y) <= r + e.r) hitWith(w, def, e, 1, true);
+  if (def.field) addField(w, def, x, y);
   R.fx.push({ k: 'boom', x, y, r, t: 0, life: 0.28, c: def.elem === 'fire' ? '#ff8a3a' : '#f3c94a' });
   if (def.proj === 'shell') R.shake = Math.min(3, R.shake + 0.6);
 }
@@ -522,6 +548,9 @@ function hitWith(w, def, e, mult = 1, aoe = false) {
   let chains = (def.chain || 0) + (el === 'bolt' ? 1 + R.S.elemStep.bolt : 0);
   if (chains > 0 && !aoe) chain(e, def, d * 0.6, chains, w);
   if (def.stun && e.hp > 0) e.stunT = Math.max(e.stunT, def.stun * (e.boss ? 0.3 : 1));
+  if (def.mark && e.hp > 0) e.markT = def.mark;
+  if (def.knock && e.hp > 0 && !e.d.treasure) { const dd = Math.max(1, distC(e)), k = def.knock * (e.boss ? 0.15 : 1); e.x += (e.x - CX) / dd * k; e.y += (e.y - CY) / dd * k; }
+  if (def.field && !aoe) addField(w, def, e.x, e.y);
   if (el === 'bolt' && R.S.elemStep.bolt >= 2 && Math.random() < 0.15 && e.hp > 0) e.stunT = Math.max(e.stunT, e.boss ? 0.15 : 0.4);
 }
 function chain(e0, def, base, n, w) {
@@ -544,8 +573,29 @@ function applyElem(e, el, d, w) {
     const dps = d * 0.07 * (1 + S.elemPow.poison) * (st >= 2 ? 1.4 : 1); if (dps >= e.pDps) { e.pDps = dps; e.pSrc = w; } e.poisonT = 4;
   }
 }
+// 결계부 · 질려포통: a patch of ground that wears down and slows whatever walks through it for a few seconds
+function addField(w, def, x, y) {
+  if (R.fields.length >= 40) R.fields.shift();
+  const S = R.S, f = def.field;
+  R.fields.push({ w, x, y, r: f.r * (def.type === 'cannon' && S.typeStep.cannon >= 2 ? 1.3 : 1), t: f.t, T: f.t, dps: def.dmg * f.dps * (1 + S.dmg + S.typeDmg[def.type]), slow: f.slow, c: f.c, tick: 0 });
+}
+function stepFields(dt) {
+  let n = 0;
+  for (const f of R.fields) {
+    f.t -= dt; f.tick -= dt;
+    const hit = f.tick <= 0; if (hit) f.tick = 0.5;
+    for (const e of R.enemies) {
+      if (e.hp <= 0 || e.d.treasure || Math.hypot(e.x - f.x, e.y - 4 - f.y) > f.r + e.r) continue;
+      e.slowT = Math.max(e.slowT, 0.3); e.slowF = Math.max(e.slowF, f.slow * (e.boss ? 0.5 : 1));
+      if (hit) damage(e, f.dps * 0.5, f.w, false, false, Math.random() < 0.6);
+    }
+    if (f.t > 0) R.fields[n++] = f;
+  }
+  R.fields.length = n;
+}
 function damage(e, d, w, crit, strong, silent) {
   if (e.hp <= 0 || d <= 0) return;
+  if (e.markT > 0 && w) d *= 1.25; // 낙인부
   e.hp -= d; e.flash = 0.06;
   if (!silent && R.fx.length < 380 && (crit || Math.random() < 0.35)) R.fx.push({ k: 'hit', x: e.x + rand(-2, 2), y: e.y - e.r - rand(0, e.r), t: 0, life: 0.12 });
   if (w) w.dealt += d; else R.thornDealt += d;
@@ -564,6 +614,7 @@ function adaptBoss(e, dt) {
 }
 function kill(e, w) {
   const S = R.S;
+  if (e.boss) R.track.bosses++; if (e.d.treasure) R.track.treasures++;
   if (e.d.treasure) { const coins = Math.round(giftCoins(R.round) * 0.5); R.gold += coins; R.nums.push({ x: e.x, y: e.y - 20, v: coins, c: '#f3c94a', s: 2, t: 0, plus: true }); offerGift(); }
   else {
     const g = e.bounty * (1 + S.bounty) + (w && ITEM[w.id].goldOnKill ? ITEM[w.id].goldOnKill : 0);
@@ -572,9 +623,11 @@ function kill(e, w) {
   }
   if (DECALS.length < 70) DECALS.push({ x: e.x, y: e.y, k: (Math.random() * INK.length) | 0, t: 0, life: e.boss ? 12 : 4 });
   R.kills++;
+  if (w && ITEM[w.id].lifeOnKill) R.hp = Math.min(R.S.maxHp, R.hp + ITEM[w.id].lifeOnKill);
+  if (e.d.split && !e.ghost) for (let i = 0; i < 2; i++) { const o = spawnFoe(e.d.split, 0, 0, { x: e.x + (i ? 6 : -6), y: e.y + rand(-3, 3) }); o.flash = 0.12; } // 그슨대 → 그림자 둘
   for (let i = 0; i < (e.boss ? 30 : 6); i++) R.fx.push({ k: 'p', x: e.x + rand(-e.r, e.r), y: e.y - rand(0, e.r * 2), vx: rand(-34, 34), vy: rand(-46, -4), t: 0, life: rand(0.3, 0.7), c: i % 3 === 0 ? '#fff2d0' : i % 3 === 1 ? '#3a2a3a' : '#8a7a8a' });
   if (e.burnT > 0 && S.elemStep.fire >= 2) { for (const o of R.enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 22) { o.burnT = 3; o.burnDps = Math.max(o.burnDps, e.burnDps * 0.8); o.burnSrc = e.burnSrc; } R.fx.push({ k: 'boom', x: e.x, y: e.y - 4, r: 18, t: 0, life: 0.25, c: '#ff8a3a' }); }
-  if (e.boss) { R.shake = 8; hitStop = e.d.final ? 0.7 : 0.35; R.fx.push({ k: 'boom', x: e.x, y: e.y - 10, r: 46, t: 0, life: 0.6, c: '#f3c94a' }); R.fx.push({ k: 'ring', x: e.x, y: e.y - 10, r: 90, t: 0, life: 0.8, c: '#fff2a8', big: true }); if (!e.d.final) banner('보스 토벌', e.d.name, 'gold', '토벌'); }
+  if (e.boss) { R.shake = 8; hitStop = e.d.final ? 0.7 : 0.35; R.fx.push({ k: 'boom', x: e.x, y: e.y - 10, r: 46, t: 0, life: 0.6, c: '#f3c94a' }); R.fx.push({ k: 'ring', x: e.x, y: e.y - 10, r: 90, t: 0, life: 0.8, c: '#fff2a8', big: true }); if (!e.stageFinal) banner('보스 토벌', e.d.name, 'gold', '토벌'); }
   if (R.diff.revive && !e.ghost && !e.boss && !e.d.treasure && Math.random() < R.diff.revive) {
     // 저승길: the fallen rise once more as a pale 원혼 with part of their health and no bounty
     // it rises a few steps further out and strikes at half strength, so it is a second wave, not a hit at the gate
@@ -584,12 +637,12 @@ function kill(e, w) {
     R.fx.push({ k: 'ring', x: at.x, y: at.y - 6, r: 14, t: 0, life: 0.5, c: '#9ff0e6' });
   }
   Sfx.play('coin', 80);
-  if (e.d.final) win();
+  if (e.stageFinal) win();
 }
 function smite() {
   if (!R || R.state !== 'run' || R.gift || R.smites <= 0) return;
   const live = R.enemies.filter(e => e.hp > 0 && onField(e)); if (!live.length) { Sfx.play('deny', 200); return; }
-  R.smites--; R.flash = 0.5; R.shake = 8; hitStop = 0.22; Sfx.play('smite');
+  R.smites--; R.track.smites++; R.flash = 0.5; R.shake = 8; hitStop = 0.22; Sfx.play('smite');
   for (const e of live) {
     R.fx.push({ k: 'bolt', pts: [[e.x + rand(-20, 20), -4], [e.x + rand(-6, 6), e.y * 0.5], [e.x, e.y - 6]], t: 0, life: 0.35, c: '#fff2a8' });
     if (e.boss) damage(e, e.max * (e.d.final ? 0.08 : 0.15), null, false, false); else if (!e.d.treasure) damage(e, e.hp + 1, null, false, false, true);
@@ -600,8 +653,9 @@ function hurtTower(d, e) {
   const S = R.S; d *= 1 - S.dr;
   if (R.shieldNow > 0) { const a = Math.min(R.shieldNow, d); R.shieldNow -= a; d -= a; }
   R.hp -= d; R.shake = Math.min(4, R.shake + (e && e.boss ? 3 : 0.4)); R.hurtT = 0.15; Sfx.play('hurt', 160);
+  if (e && S.thornSlow > 0 && e.hp > 0) { e.slowT = Math.max(e.slowT, 2); e.slowF = Math.max(e.slowF, S.thornSlow * (e.boss ? 0.5 : 1)); }
   if (e && S.thorn > 0 && e.hp > 0) {
-    const t = S.thorn * (1 + S.thornPow) * (1 + 0.1 * (Math.min(R.round, ROUNDS) - 1));
+    const t = S.thorn * (1 + S.thornPow) * (1 + 0.1 * (Math.min(R.round, R.rounds) - 1));
     damage(e, t, null, false, false);
     for (const el of S.thornElems) applyElem(e, el, t, null);
   }
@@ -610,7 +664,7 @@ function hurtTower(d, e) {
 function updateEnemies(dt) {
   for (const e of R.enemies) {
     if (e.hp <= 0) continue;
-    e.life += dt; if (e.flash > 0) e.flash -= dt; if (e.lunge > 0) e.lunge -= dt;
+    e.life += dt; if (e.flash > 0) e.flash -= dt; if (e.lunge > 0) e.lunge -= dt; if (e.markT > 0) e.markT -= dt;
     if (e.boss && R.diff.trait === 'adapt') adaptBoss(e, dt);
     // damage over time
     let dot = 0;
@@ -675,8 +729,13 @@ function stepFoeShot(s, dt) {
 function update(dt) {
   if (!R || R.state !== 'run' || R.gift) return;
   R.time += dt; R.t -= dt; R.elapsed += dt;
-  if (R.t <= 0) { if (R.round === 0) startRound(1); else if (R.round < ROUNDS) startRound(R.round + 1); else if (!R.final) startFinal(); }
-  while (R.spawnQ.length && R.spawnQ[0].t <= R.elapsed) { const q = R.spawnQ.shift(); spawnFoe(q.kind, q.side, q.along); }
+  if (R.t <= 0) { if (R.round === 0) startRound(1); else if (R.round < R.rounds) startRound(R.round + 1); else if (!R.final) startFinal(); }
+  if (R.hp < R.S.maxHp * R.track.minHp) R.track.minHp = R.hp / R.S.maxHp;
+  while (R.spawnQ.length && R.spawnQ[0].t <= R.elapsed) {
+    const q = R.spawnQ.shift(), e = spawnFoe(q.kind, q.side, q.along);
+    for (let i = 1; i < (e.d.pack || 1); i++) spawnFoe(q.kind, 0, 0, { x: e.x + rand(-9, 9), y: e.y + rand(-9, 9) }); // 창귀 come as a pack
+  }
+  stepFields(dt);
   R.gold += R.S.income * dt;
   R.hp = Math.min(R.S.maxHp, R.hp + R.S.regen * dt);
   updateWeapons(dt);
@@ -700,7 +759,7 @@ function offerGift() {
   R.gift = pick3; Sfx.play('gift'); showGift();
 }
 function takeGift(i) {
-  const g = R.gift && R.gift[i]; if (!g) return; const r = Math.min(R.round, ROUNDS);
+  const g = R.gift && R.gift[i]; if (!g) return; const r = Math.min(R.round, R.rounds);
   if (g.id === 'coins') R.gold += giftCoins(r);
   else if (g.id === 'heal') { R.hp = R.S.maxHp; R.shieldNow = R.S.shield; }
   else if (g.id === 'reroll') R.freeRerolls += 3;
@@ -712,22 +771,31 @@ function takeGift(i) {
   } else if (g.id === 'gamtu') { R.bonusDmg += 0.1; refreshStats(); }
   R.gift = null; closeModal(); renderShop(); renderInv(); renderRes();
 }
-function roundsCleared() { return R.state === 'won' ? ROUNDS : Math.max(0, Math.min(ROUNDS, R.round - 1)); }
+function roundsCleared() { return R.state === 'won' ? R.rounds : Math.max(0, Math.min(R.rounds, R.round - 1)); }
 // Ranked score: rounds held decide almost everything; the last 0~999 points break ties inside the same round —
 // a loss counts how far into the deciding round you lasted (or how much of the dragon you burned down),
 // a win counts how fast the dragon fell. Kills no longer score.
 function runScore() {
   if (R.state === 'won') return ROUNDS * 1000 + 30000 + Math.round(clamp(R.hp / R.S.maxHp, 0, 1) * 5000) + Math.max(0, 999 - Math.floor(R.time - (R.finalAt ?? R.time)));
   const dragon = R.final && R.enemies.find(e => e.d.final);
-  const part = R.final ? (dragon ? 1 - dragon.hp / dragon.max : 0) : R.round > 0 ? R.elapsed / ROUND_TIME : 0;
+  const part = R.final ? (dragon ? 1 - dragon.hp / dragon.max : 0) : R.round > 0 ? R.elapsed / R.roundTime : 0;
   return roundsCleared() * 1000 + Math.min(999, Math.floor(clamp(part, 0, 1) * 1000));
 }
 function finishRun() {
-  const d = R.diff, cleared = roundsCleared(), won = R.state === 'won';
-  const shards = Math.floor(cleared * d.mem) + (won ? Math.round(25 * d.mem) : 0);
-  P.shards += shards; P.runs++; Cloud.play(won ? 'win' : 'end');
-  P.best[d.id] = Math.max(P.best[d.id] || 0, won ? ROUNDS + 1 : R.round);
-  if (won) { P.wins[d.id] = (P.wins[d.id] || 0) + 1; Cloud.claimFirst(d.id); if (d.id === 'nm3' && !P.netherAt) P.netherAt = Math.round(P.playSec); }
+  const d = R.diff, cleared = roundsCleared(), won = R.state === 'won', st = R.stage;
+  let shards = Math.floor(cleared * d.mem) + (won ? Math.round(25 * d.mem) : 0), firstClear = false;
+  P.runs++; Cloud.play(won ? 'win' : 'end');
+  P.stats.kills += R.kills; P.stats.bosses += R.track.bosses; P.stats.treasures += R.track.treasures;
+  if (st) { // 봉수로 지도: keep the leg's best and clears; the first clear pays a bonus
+    const m = P.map[st.id] || (P.map[st.id] = { best: 0, clears: 0 });
+    m.best = Math.max(m.best, won ? st.rounds + 1 : R.round);
+    if (won) { firstClear = !m.clears; m.clears++; if (firstClear) shards += st.bonus; }
+  } else {
+    P.best[d.id] = Math.max(P.best[d.id] || 0, won ? ROUNDS + 1 : R.round);
+    if (won) { P.wins[d.id] = (P.wins[d.id] || 0) + 1; Cloud.claimFirst(d.id); if (d.id === 'nm3' && !P.netherAt) P.netherAt = Math.round(P.playSec); }
+  }
+  P.shards += shards;
+  const newAch = checkAch();
   let rec = null;
   if (R.ranked) {
     rec = { week: weekId(), score: runScore(), round: won ? ROUNDS + 1 : R.round, win: won, kills: R.kills, nick: P.nick || '', at: Date.now() };
@@ -735,8 +803,38 @@ function finishRun() {
     lastRecAt = rec.at;
   }
   persist();
-  return { shards, rec };
+  return { shards, rec, newAch, firstClear };
 }
+// ── 업적 ──
+// Marks every achievement the profile (and, at the end of a run, that run) now meets; returns the newly earned ones.
+function checkAch() {
+  const got = [], give = id => { if (!P.ach[id] && ACH[id]) { P.ach[id] = Date.now(); got.push(id); } };
+  for (const a of ACHS) if (a.goal) { const [have, need] = a.goal(P); if (have >= need) give(a.id); }
+  if (P.runs > 0) give('first');
+  for (const [id, dd] of [['w_easy', 'easy'], ['w_normal', 'normal'], ['w_hard', 'hard'], ['w_nm1', 'nm1'], ['w_nm3', 'nm3'], ['w_nether', 'nether'], ['w_nether3', 'nether3']]) if (P.wins[dd]) give(id);
+  if (ROUTES.some(rt => routeDone(rt, P))) give('route1');
+  if (P.map[FINALE.id] && P.map[FINALE.id].clears) give('capital');
+  if (P.records.length) give('ranked');
+  if (P.records.some(r => r.win)) give('rankwin');
+  if (R && R.state !== 'run' && R.round > 0) {
+    const won = R.state === 'won', T = R.track, real = !R.stage && R.diff.id !== 'easy';
+    if (R.kills >= 1500) give('kills1500');
+    if (T.treasures >= 4) give('treasure4');
+    if (T.set3) give('set3'); if (T.elem2) give('elem2');
+    if (won && R.finalKind === 'dragon' && R.time - R.finalAt <= 60) give('dragon60');
+    if (won && real) {
+      if (!T.smites) give('nosmite');
+      if (T.types.size === 1) give('mono');
+      if (TYPE_IDS.every(t => R.S.typeCount[t])) give('all5');
+      if (!T.eco) give('noeco');
+      if (R.hp / R.S.maxHp <= 0.1) give('clutch');
+      if (T.minHp >= 0.8) give('flawless');
+    }
+  }
+  if (got.length) persist();
+  return got;
+}
+const achTitle = id => (ACH[id] ? ACH[id].title : '');
 function win() { if (R.state !== 'run') return; R.state = 'won'; Sfx.play('win'); const res = finishRun(); setTimeout(() => showResult(res), 900); }
 function lose() { if (R.state !== 'run') return; R.state = 'lost'; Sfx.play('lose'); const res = finishRun(); setTimeout(() => showResult(res), 900); }
 
@@ -753,9 +851,10 @@ function stepAmb(dt, hpRatio, T) {
     if (Math.random() < dt * (f.lit ? 0.9 : 2.4)) AMB.push({ k: 'smoke', x: f.x + rand(-1, 1), y: f.y - 6, vx: rand(3, 9), vy: rand(-11, -6), t: 0, life: rand(1.8, 3), r: rand(1.5, 2.6), dark: !f.lit });
   }
   const motes = AMB.reduce((n, a) => n + (a.k === T.mote), 0);
-  if (motes < (T.mote === 'leaf' ? 10 : 16) && Math.random() < dt * 4) {
+  if (motes < (T.mote === 'leaf' ? 10 : T.mote === 'snow' ? 70 : 16) && Math.random() < dt * (T.mote === 'snow' ? 30 : 4)) {
     let x = rand(0, FW), y = rand(0, FH);
-    if (T.mote === 'leaf') AMB.push({ k: 'leaf', x, y: -4, vx: rand(6, 14), vy: rand(9, 16), t: 0, life: 30, ph: rand(0, 6), c: T.flower[(Math.random() * 3) | 0] });
+    if (T.mote === 'snow') AMB.push({ k: 'snow', x, y: -4, vx: rand(-5, 3), vy: rand(12, 22), t: 0, life: 40, ph: rand(0, 6), s: Math.random() < 0.25 ? 2 : 1 });
+    else if (T.mote === 'leaf') AMB.push({ k: 'leaf', x, y: -4, vx: rand(6, 14), vy: rand(9, 16), t: 0, life: 30, ph: rand(0, 6), c: T.flower[(Math.random() * 3) | 0] });
     else if (Math.hypot(x - CX, y - CY) > PLAZA_R + 20) AMB.push({ k: T.mote, x, y, vx: rand(-4, 4), vy: rand(-4, 4), t: 0, life: rand(3, 6), ph: rand(0, 6) });
   }
   let w = 0;
@@ -763,7 +862,7 @@ function stepAmb(dt, hpRatio, T) {
     a.t += dt;
     if (a.k === 'ember') { a.vx += Math.sin(clock * 3 + a.y) * 20 * dt; a.vy *= 1 - dt * 0.6; }
     if (a.k === 'smoke') { a.r += dt * 2.2; a.vx += dt * 2; }
-    if (a.k === 'leaf') a.x += Math.sin(clock * 2 + a.ph) * 10 * dt;
+    if (a.k === 'leaf' || a.k === 'snow') a.x += Math.sin(clock * 2 + a.ph) * (a.k === 'snow' ? 6 : 10) * dt;
     if (a.k === 'soul') { a.vx += Math.sin(clock * 2 + a.ph) * 6 * dt; a.vy = -6; }
     if (a.k === 'firefly' || a.k === 'wisp') { a.vx += rand(-20, 20) * dt; a.vy += rand(-20, 20) * dt; a.vx *= 0.98; a.vy *= 0.98; }
     a.x += a.vx * dt; a.y += a.vy * dt;
@@ -784,6 +883,7 @@ function drawAmb(over) {
     else if (a.k === 'firefly') { const on = Math.sin(clock * 3 + a.ph) > 0.2; if (on) { pr(g, a.x, a.y, 1, 1, '#e8ff9a'); g.globalAlpha = 0.25; pr(g, a.x - 1, a.y - 1, 3, 3, '#c8ff6a'); g.globalAlpha = 1; } }
     else if (a.k === 'soul') { g.globalAlpha = Math.sin(p * Math.PI) * 0.75; pr(g, a.x, a.y, 1, 2, '#9ff0e6'); pr(g, a.x, a.y - 1, 1, 1, '#e8fff8'); g.globalAlpha = 1; }
     else if (a.k === 'wisp') { g.globalAlpha = Math.sin(p * Math.PI) * 0.8; pr(g, a.x, a.y, 1, 1, '#d6b4ff'); g.globalAlpha = 1; }
+    else if (a.k === 'snow') { g.globalAlpha = 0.85; pr(g, a.x, a.y, a.s, a.s, '#f4f8ff'); g.globalAlpha = 1; }
   }
 }
 function render(dt) {
@@ -798,6 +898,7 @@ function render(dt) {
   for (const d of DECALS) { g.globalAlpha = Math.min(0.55, (1 - d.t / d.life) * 0.9); g.drawImage(INK[d.k], Math.round(d.x - 8), Math.round(d.y - 5)); }
   g.globalAlpha = 1;
   for (const [x, y] of TORCHES) drawTorch(g, x, y, clock);
+  if (R) for (const f of R.fields) drawField(f);
   if (R && R.showRange) { const seen = new Set(); for (const w of R.weapons) { const r = Math.round(ITEM[w.id].range * (1 + R.S.range)); if (seen.has(r)) continue; seen.add(r); pring(g, CX, CY, r, 'rgba(255,226,160,0.35)'); } }
   const list = R ? R.enemies.slice().sort((a, b) => a.y - b.y) : [];
   let towerDrawn = false;
@@ -860,6 +961,12 @@ function render(dt) {
     if (R.flash > 0) { g.fillStyle = `rgba(255,248,220,${Math.min(0.75, R.flash * 1.4)})`; g.fillRect(-8, -8, FW + 16, FH + 16); }
   }
 }
+function drawField(f) {
+  const a = Math.min(1, f.t / 0.4, (f.T - f.t) / 0.15);
+  g.globalAlpha = 0.18 * a; pcirc(g, f.x, f.y, f.r, f.c); g.globalAlpha = 0.6 * a; pring(g, f.x, f.y, f.r, f.c);
+  for (let i = 0; i < 6; i++) { const t = i / 6 * Math.PI * 2 + clock * (f.c === '#9be6ff' ? 0.8 : 0); pr(g, f.x + Math.cos(t) * f.r * 0.6, f.y + Math.sin(t) * f.r * 0.45, 1, 1, f.c); }
+  g.globalAlpha = 1;
+}
 function drawFoe(e) {
   const spr = SPRITES[e.d.spr]; if (!spr) return;
   const frame = spr.frames.length > 1 && e.freezeT <= 0 && e.stunT <= 0 ? Math.floor(e.anim * 6) % 2 : 0;
@@ -883,6 +990,7 @@ function drawFoe(e) {
   if (!e.boss && e.hp < e.max) { const w = Math.max(6, spr.w - 2); pr(g, Math.round(e.x - w / 2) - 1, y - 4, w + 2, 3, 'rgba(10,6,6,0.75)'); pr(g, Math.round(e.x - w / 2), y - 3, Math.max(1, Math.round(w * e.hp / e.max)), 1, e.hp / e.max < 0.35 ? '#ff5a3a' : '#e8c35a'); }
   if (e.d.treasure && Math.floor(clock * 6) % 2) pr(g, x + spr.w - 3, y + 2, 1, 1, '#fff2a8');
   if (e.resistT > 0) { const c = TYPES[e.resist].color; pring(g, e.x, y - 6, 4, c); pr(g, e.x - 1, y - 7, 3, 3, c); }
+  if (e.markT > 0) { pr(g, Math.round(e.x) - 2, y - 9, 5, 4, '#17131c'); pr(g, Math.round(e.x) - 1, y - 8, 3, 2, '#e5534b'); }
 }
 function drawShot(s) {
   if (s.delay > 0) return;
@@ -904,6 +1012,7 @@ function drawFx(f) {
     case 'hit': { const r = p < 0.5 ? 2 : 1; pr(g, f.x - r, f.y, r * 2 + 1, 1, '#fff6d8'); pr(g, f.x, f.y - r, 1, r * 2 + 1, '#fff6d8'); break; }
     case 'boom': if (p < 0.5) pcirc(g, f.x, f.y, f.r * (0.4 + p * 1.2), f.c); if (p < 0.25) pcirc(g, f.x, f.y, f.r * 0.35, '#fff6d0'); pring(g, f.x, f.y, f.r * (0.4 + p * 0.9), p < 0.6 ? '#fff2a8' : '#8b919e'); break;
     case 'ring': pring(g, f.x, f.y, f.r * (0.3 + p), f.c); if (f.big) pring(g, f.x, f.y, f.r * (0.15 + p * 0.8), f.c); break;
+    case 'sweep': g.globalAlpha = 1 - p; for (let i = 0; i < 18; i++) { const t = f.a0 + p * Math.PI * 2 - i * 0.09; pr(g, f.x + Math.cos(t) * f.r, f.y + Math.sin(t) * f.r * 0.8, 2, 1, i < 4 ? '#ffffff' : '#c9d3e6'); } g.globalAlpha = 1; break;
     case 'bolt': for (let i = 0; i < f.pts.length - 1; i++) { const [x0, y0] = f.pts[i], [x1, y1] = f.pts[i + 1], mx = (x0 + x1) / 2 + rand(-3, 3), my = (y0 + y1) / 2 + rand(-3, 3); pline(g, x0, y0, mx, my, f.c); pline(g, mx, my, x1, y1, f.c); } break;
   }
 }
@@ -1091,15 +1200,15 @@ let hudKey = '';
 function renderHud(force) {
   if (!R) return;
   const enemies = R.enemies.filter(e => e.hp > 0 && !e.d.treasure).length;
-  const cur = R.final ? R.enemies.find(e => e.d.final)?.armor : R.armorSeq[Math.max(1, R.round)], next = R.final ? null : R.armorSeq[Math.max(1, R.round) + (R.round === 0 ? 0 : 1)];
+  const cur = R.final ? (R.enemies.find(e => e.stageFinal) || R.enemies.find(e => e.boss))?.armor : R.armorSeq[Math.max(1, R.round)], next = R.final ? null : R.armorSeq[Math.max(1, R.round) + (R.round === 0 ? 0 : 1)];
   const time = R.final ? '결전' : `${Math.ceil(R.t)}초`;
-  $('#fuse i').style.width = (R.final ? 100 : clamp(R.t / (R.round === 0 ? PREP_TIME : ROUND_TIME), 0, 1) * 100).toFixed(1) + '%';
+  $('#fuse i').style.width = (R.final ? 100 : clamp(R.t / (R.round === 0 ? PREP_TIME : R.roundTime), 0, 1) * 100).toFixed(1) + '%';
   const key = [R.round, time, enemies, cur, next, R.smites, speed, paused].join('|');
   if (!force && key === hudKey) return; hudKey = key;
-  $('#hRound').innerHTML = R.final ? '<b class="boss">최종 결전</b>' : R.round === 0 ? '출정 준비' : `제 <b>${R.round}</b> 라운드 <small class="dim">/ ${ROUNDS}</small>`;
-  $('#hDiff').textContent = `${R.diff.name}${R.ranked ? ' · 랭킹전' : ''}`;
+  $('#hRound').innerHTML = R.final ? '<b class="boss">최종 결전</b>' : R.round === 0 ? '출정 준비' : `제 <b>${R.round}</b> 라운드 <small class="dim">/ ${R.rounds}</small>`;
+  $('#hDiff').textContent = R.stage ? `봉수로 · ${R.stage.name}` : `${R.diff.name}${R.ranked ? ' · 랭킹전' : ''}`;
   $('#hTime').textContent = time; $('#hEnemy').textContent = enemies;
-  $('#hArmor').innerHTML = R.final ? `흑룡 비늘 ${armorChip(cur)}` : `${R.round === 0 ? '첫 주력' : '이번 주력'} ${armorChip(cur)}${R.round === 0 ? '' : ` <span>다음</span> ${armorChip(next, true)}`}`;
+  $('#hArmor').innerHTML = R.final ? `${FOES[R.finalKind].name} ${armorChip(cur)}` : `${R.round === 0 ? '첫 주력' : '이번 주력'} ${armorChip(cur)}${R.round === 0 ? '' : ` <span>다음</span> ${armorChip(next, true)}`}`;
   $('#bSmite').innerHTML = `<b>천벌</b> <span>${R.smites}</span>회 <small>[Z]</small>`; $('#bSmite').disabled = R.smites <= 0;
   $('#bSpeed').textContent = `×${speed}`; $('#bPause').textContent = paused ? '▶' : 'Ⅱ';
   const boss = R.enemies.find(e => e.boss && e.hp > 0), bb = $('#bossBar');
@@ -1113,7 +1222,7 @@ function renderRes() {
   if (lit !== renderRes.lit) { renderRes.lit = lit; $('#flames').innerHTML = [0, 1, 2, 3, 4].map(i => `<i style="background-image:url(${i < lit ? FLAME_ON : FLAME_OFF})"></i>`).join(''); }
   $('#hpFill').style.width = (R.hp / S.maxHp * 100).toFixed(1) + '%';
   $('#shFill').style.width = (S.shield ? Math.min(100, R.shieldNow / S.maxHp * 100) : 0).toFixed(1) + '%';
-  $('#defVal').innerHTML = `<span title="보호막">◈ ${fmt(R.shieldNow)}</span><span title="받는 피해 감소">방어 ${pct(S.dr)}</span><span title="가시 반사">가시 ${fmt(S.thorn * (1 + S.thornPow) * (1 + 0.1 * (Math.min(Math.max(1, R.round), ROUNDS) - 1)))}</span>${R.halfOff ? '<span class="gold">반값 흥정</span>' : ''}`;
+  $('#defVal').innerHTML = `<span title="보호막">◈ ${fmt(R.shieldNow)}</span><span title="받는 피해 감소">방어 ${pct(S.dr)}</span><span title="가시 반사">가시 ${fmt(S.thorn * (1 + S.thornPow) * (1 + 0.1 * (Math.min(Math.max(1, R.round), R.rounds) - 1)))}</span>${R.halfOff ? '<span class="gold">반값 흥정</span>' : ''}`;
   const rr = $('#reroll'), free = R.freeRerolls > 0, c = rerollCost();
   rr.innerHTML = `새로고침 [R] <span class="${free ? 'free' : R.gold >= c ? 'gold' : 'bad'}">${free ? `무료 ${R.freeRerolls}회` : `${fmt(c)}냥`}</span>`;
   for (const card of $$('#shop .card')) { const s = R.shop[+card.dataset.slot]; if (!s || s.sold) continue; const p = Math.round(priceOf(s.id) * (R.halfOff ? 0.5 : 1)); card.classList.toggle('poor', R.gold < p); }
@@ -1176,7 +1285,7 @@ function itemStats(d) {
   if (d.cat === 'weapon') {
     out.push(`피해 <b>${d.dmg}</b>${d.shots ? ` × ${d.shots}발` : ''} · ${d.cd}초마다 · 사거리 ${d.range}`);
     if (TYPES[d.type].strong) out.push(`<span style="color:${ARMORS[TYPES[d.type].strong].color}">${ARMORS[TYPES[d.type].strong].name}</span>에 2배`); else out.push('모든 적에게 0.5~2배 무작위');
-    const ex = []; if (d.splash) ex.push(`폭발 ${d.splash}`); if (d.pierce) ex.push(`관통 ${d.pierce}`); if (d.bounce) ex.push(`튕김 ${d.bounce}`); if (d.multi) ex.push(`동시 ${d.multi}명`); if (d.chain) ex.push(`연쇄 ${d.chain}`); if (d.elem) ex.push(`<span style="color:${ELEMS[d.elem].color}">${ELEMS[d.elem].name}</span>`); if (d.elem2) ex.push(`<span style="color:${ELEMS[d.elem2].color}">${ELEMS[d.elem2].name}</span>`);
+    const ex = []; if (d.sweep) ex.push('둘레 베기'); if (d.bossDmg) ex.push(`보스 피해 +${pct(d.bossDmg)}`); if (d.mark) ex.push(`낙인 ${d.mark}초`); if (d.field) ex.push(`지대 ${d.field.t}초`); if (d.knock) ex.push('밀쳐내기'); if (d.lifeOnKill) ex.push(`처치 시 체력 +${d.lifeOnKill}`); if (d.splash) ex.push(`폭발 ${d.splash}`); if (d.pierce) ex.push(`관통 ${d.pierce}`); if (d.bounce) ex.push(`튕김 ${d.bounce}`); if (d.multi) ex.push(`동시 ${d.multi}명`); if (d.chain) ex.push(`연쇄 ${d.chain}`); if (d.elem) ex.push(`<span style="color:${ELEMS[d.elem].color}">${ELEMS[d.elem].name}</span>`); if (d.elem2) ex.push(`<span style="color:${ELEMS[d.elem2].color}">${ELEMS[d.elem2].name}</span>`);
     if (ex.length) out.push(ex.join(' · '));
     if (S) { const real = d.dmg * (1 + S.dmg + S.typeDmg[d.type]); out.push(`<span class="dim">지금 강화 적용 시 ${fmt(real)}</span>`); }
   }
@@ -1237,7 +1346,7 @@ function renderMatch() {
 function openModal(html, cls = '') { const m = $('#modal'); $('#modalCard').className = 'mcard paper ' + cls; $('#modalCard').innerHTML = html; m.hidden = false; const f = $('#modalCard [data-focus]') || $('#modalCard button'); if (f) f.focus(); }
 function closeModal() { $('#modal').hidden = true; $('#modalCard').innerHTML = ''; }
 function showGift() {
-  openModal(`<div class="eyebrow gold">보물 도깨비를 잡았습니다</div><h2>복주머니를 하나 고르세요</h2><div class="gifts">${R.gift.map((g, i) => `<button class="gift" data-act="gift" data-id="${i}"><img alt="" src="${iconUrl(GIFT_ICON[g.id] || 'sack')}"><b>${g.name}</b><span>${g.desc(Math.min(R.round, ROUNDS))}</span><span class="key">${i + 1}</span></button>`).join('')}</div>`, 'wide');
+  openModal(`<div class="eyebrow gold">보물 도깨비를 잡았습니다</div><h2>복주머니를 하나 고르세요</h2><div class="gifts">${R.gift.map((g, i) => `<button class="gift" data-act="gift" data-id="${i}"><img alt="" src="${iconUrl(GIFT_ICON[g.id] || 'sack')}"><b>${g.name}</b><span>${g.desc(Math.min(R.round, R.rounds))}</span><span class="key">${i + 1}</span></button>`).join('')}</div>`, 'wide');
 }
 function setPaused(v) {
   if (!R || R.state !== 'run' || R.gift) return; paused = v;
@@ -1250,14 +1359,17 @@ function showResult(res) {
   const perksTip = guideActive() && !seen('perks') && res.shards > 0; if (perksTip) markSeen('perks');
   const askJoin = R.state === 'won' && Cloud.api && !Cloud.acct, firstFree = askJoin && Cloud.firsts && !Cloud.firsts[R.diff.id];
   const won = R.state === 'won', d = R.diff, cleared = roundsCleared(), canOnline = R.ranked && Cloud.online && !Cloud.api, autoOnline = R.ranked && Cloud.api && !!Cloud.acct && !!res.rec;
-  openModal(`<div class="eyebrow ${won ? 'gold' : 'bad'}">${d.name}${R.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}</div><h2>${won ? '봉화를 끝까지 지켰습니다' : R.round === 0 ? '출정 전에 물러났습니다' : `${R.round} 라운드에서 봉화가 꺼졌습니다`}</h2>
-    <dl class="facts"><dt>버틴 라운드</dt><dd>${cleared} / ${ROUNDS}${won ? ' + 흑룡' : ''}</dd><dt>처치</dt><dd>${fmt(R.kills)}</dd><dt>시간</dt><dd>${Math.floor(R.time / 60)}분 ${Math.floor(R.time % 60)}초</dd><dt>기억 조각</dt><dd class="gold">+${res.shards}</dd>${res.rec ? `<dt>랭킹 점수</dt><dd class="gold big">${fmt(res.rec.score)}</dd>` : ''}</dl>
-    ${won && P.wins[d.id] === 1 && DIFFS.find(x => x.req === d.id) ? `<p class="gold">${opensMsg(DIFFS.find(x => x.req === d.id).name)}</p>` : ''}
+  const st = R.stage, next = st && won ? nextStage(st) : null;
+  openModal(`<div class="eyebrow ${won ? 'gold' : 'bad'}">${st ? `봉수로 지도 · ${st.route ? `${st.route.name} ${st.si + 1}구간` : '마지막 봉화'}` : d.name}${R.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}</div><h2>${won ? (st ? `${st.name} 봉화를 올렸습니다` : '봉화를 끝까지 지켰습니다') : R.round === 0 ? '출정 전에 물러났습니다' : `${R.round} 라운드에서 봉화가 꺼졌습니다`}</h2>
+    <dl class="facts two"><dt>버틴 라운드</dt><dd class="span">${cleared} / ${R.rounds}${won ? ` + ${FOES[R.finalKind].name}` : ''}</dd><dt>처치</dt><dd>${fmt(R.kills)}</dd><dt>시간</dt><dd>${Math.floor(R.time / 60)}분 ${Math.floor(R.time % 60)}초</dd><dt>기억 조각</dt><dd class="gold">+${res.shards}</dd>${res.rec ? `<dt>랭킹 점수</dt><dd class="gold big">${fmt(res.rec.score)}</dd>` : ''}</dl>
+    ${!st && won && P.wins[d.id] === 1 && DIFFS.find(x => x.req === d.id) ? `<p class="gold">${opensMsg(DIFFS.find(x => x.req === d.id).name)}</p>` : ''}
+    ${st && res.firstClear ? `<p class="gold">처음 올린 봉화 +${st.bonus}${next ? ` · 다음 구간 <b>${next.name}</b> 열림` : st.route ? ` · <b>${st.route.name}</b>을 한양까지 이었습니다` : ''}</p>` : ''}
+    ${res.newAch && res.newAch.length ? `<div class="ach-new"><b>새 업적</b>${res.newAch.map(id => `<span class="ach-chip">${ACH[id].name}<small>칭호 · ${ACH[id].title}</small></span>`).join('')}</div>` : ''}
     ${canOnline ? `<div class="submit"><input id="nickIn" maxlength="12" placeholder="닉네임" aria-label="닉네임" autocomplete="off"><button class="btn primary" data-act="submit">온라인 랭킹 등록</button></div><p class="dim small" id="submitNote">이 기기 기록에는 자동으로 남겼습니다. 온라인에는 한 사람당 이번 주 최고 기록 하나가 올라갑니다.</p>` : autoOnline ? `<p class="small" id="submitNote">명예의 전당에 <b>${Cloud.acct.id}</b>(으)로 올리는 중입니다…</p>` : R.ranked ? `<p class="dim small">이 기기 랭킹에 기록했습니다.${Cloud.api ? ' 로그인하면 명예의 전당에 올라갑니다.' : ''}</p>` : ''}
     ${askJoin ? `<div class="join-ask"><b>${firstFree ? `${R.diff.name} 첫 봉화 완주자가 아직 없어요!` : '이긴 기록을 남겨 보세요'}</b><p>${firstFree ? '지금 가입하면 방금 이긴 기록으로 <em>타이틀 화면에 이름</em>이 걸립니다.' : '가입하면 기록이 계정에 저장되고, 주간 랭킹전과 명예의 전당에 참가할 수 있어요.'}</p><div class="actions"><button class="btn primary" data-act="acct" data-id="signup" data-focus>무료 가입하기</button><button class="btn" data-act="acct" data-id="login">로그인</button></div></div>` : ''}
     ${perksTip ? `<div class="guide-note"><span class="seal-s">봉수군</span> 판이 끝나면 <b>기억 조각</b>을 받아요. 아래 <b>수호 기억</b>에서 시작 엽전·체력 같은 영구 강화를 배울 수 있어요.</div>` : ''}
     ${R.round > 0 ? '<button class="btn share-btn" data-act="share">기록 공유 · 자랑하기</button>' : ''}
-    <div class="actions"><button class="btn" data-act="menu">메뉴로</button>${R.ranked ? '<button class="btn" data-act="hall">명예의 전당</button>' : '<button class="btn" data-act="perks">수호 기억</button>'}${R.ranked ? (triesLeft() > 0 ? '<button class="btn primary" data-act="rankStart" data-focus>다시 도전</button>' : '') : `<button class="btn primary" data-act="again" data-focus>다시 하기</button>`}</div>`, won ? 'win' : 'lose');
+    <div class="actions">${st ? `<button class="btn" data-act="go-map">지도로</button><button class="btn${next ? '' : ' primary'}" data-act="again"${next ? '' : ' data-focus'}>다시 하기</button>${next ? `<button class="btn primary grow" data-act="stage-go" data-id="${next.id}" data-focus>${next.name} 출정 ▶</button>` : ''}` : `<button class="btn" data-act="menu">메뉴로</button>${R.ranked ? '<button class="btn" data-act="hall">명예의 전당</button>' : '<button class="btn" data-act="perks">수호 기억</button>'}${R.ranked ? (triesLeft() > 0 ? '<button class="btn primary" data-act="rankStart" data-focus>다시 도전</button>' : '') : `<button class="btn primary" data-act="again" data-focus>다시 하기</button>`}`}</div>`, won ? 'win' : 'lose');
   const ni = $('#nickIn'); if (ni) ni.value = P.nick;
   if (autoOnline && !res.sent) { res.sent = true; autoSubmit(res.rec); }
 }
@@ -1272,10 +1384,10 @@ function runSummary() {
   const total = [...byId.values()].reduce((a, b) => a + b, 0) || 1;
   const top = [...byId].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, d]) => ({ id, share: d / total, n: R.items.filter(i => i.id === id).length }));
   const sets = TYPE_IDS.filter(t => R.S.typeStep[t]).map(t => `${TYPES[t].set} ${R.S.typeStep[t]}단계`).concat(ELEM_IDS.filter(e => R.S.elemStep[e]).map(e => `${ELEMS[e].set} ${R.S.elemStep[e]}단계`));
-  return { won, round: R.round, cleared: roundsCleared(), diff: R.diff.name, ranked: R.ranked, kills: R.kills, time: R.time, hp: won ? clamp(R.hp / R.S.maxHp, 0, 1) : 0, score: lastRes && lastRes.rec ? lastRes.rec.score : null, top, sets, who: Cloud.acct ? Cloud.acct.id : P.nick || '' };
+  return { won, round: R.round, cleared: roundsCleared(), rounds: R.rounds, boss: FOES[R.finalKind].name, diff: R.stage ? `봉수로 · ${R.stage.name}` : R.diff.name, stage: R.stage ? R.stage.name : '', ranked: R.ranked, kills: R.kills, time: R.time, hp: won ? clamp(R.hp / R.S.maxHp, 0, 1) : 0, score: lastRes && lastRes.rec ? lastRes.rec.score : null, top, sets, who: Cloud.acct ? Cloud.acct.id : P.nick || '' };
 }
 function shareText(s) {
-  const what = s.won ? `${s.diff} 난이도에서 흑룡까지 쓰러뜨리고 봉화를 지켰다!` : s.round === 0 ? '봉화대 사수에 출정했다' : `${s.diff} 난이도 ${s.round}라운드까지 봉화를 지켰다`;
+  const what = s.stage ? (s.won ? `봉수로 지도 ${s.stage}에서 ${s.boss}까지 쓰러뜨리고 봉화를 올렸다!` : `봉수로 지도 ${s.stage} ${s.round}라운드까지 봉화를 지켰다`) : s.won ? `${s.diff} 난이도에서 흑룡까지 쓰러뜨리고 봉화를 지켰다!` : s.round === 0 ? '봉화대 사수에 출정했다' : `${s.diff} 난이도 ${s.round}라운드까지 봉화를 지켰다`;
   return `봉화대 사수 · ${what}${s.score ? ` (랭킹 ${fmt(s.score)}점)` : ''}\n너도 지켜 봐: ${SITE_URL}`;
 }
 async function paintShareCard(s) {
@@ -1305,12 +1417,12 @@ async function paintShareCard(s) {
   const L = px0 + 50;
   x.fillStyle = '#6d5a45'; x.font = '30px Galmuri11'; x.fillText(`${s.diff}${s.ranked ? ` · 주간 랭킹전 ${weekId()}` : ''}`, L, py0 + 70);
   x.fillStyle = s.won ? '#a8321f' : '#241a13'; x.font = '120px "East Sea Dokdo", Galmuri11';
-  const head = s.won ? '흑룡 토벌!' : `${s.round} 라운드`, hw = x.measureText(head).width;
+  const head = s.won ? `${s.boss} 토벌!` : `${s.round} 라운드`, hw = x.measureText(head).width;
   x.fillText(head, L, py0 + 190);
   x.fillStyle = '#5b4a39'; x.font = '36px "Song Myung", serif';
   x.fillText(s.won ? '봉화를 끝까지 지켰다' : '까지 봉화를 지켰다', L + hw + 22, py0 + 186);
   // stats row
-  const stats = [['버틴 라운드', `${s.cleared} / ${ROUNDS}`], ['처치', fmt(s.kills)], ['시간', `${Math.floor(s.time / 60)}분 ${Math.floor(s.time % 60)}초`]].concat(s.score ? [['랭킹 점수', fmt(s.score)]] : []);
+  const stats = [['버틴 라운드', `${s.cleared} / ${s.rounds}`], ['처치', fmt(s.kills)], ['시간', `${Math.floor(s.time / 60)}분 ${Math.floor(s.time % 60)}초`]].concat(s.score ? [['랭킹 점수', fmt(s.score)]] : []);
   const cw = (pw - 100) / stats.length;
   stats.forEach(([k, v], i) => { const sx = L + i * cw; x.fillStyle = '#8a7458'; x.font = '26px Galmuri11'; x.fillText(k, sx, py0 + 305); x.fillStyle = k === '랭킹 점수' ? '#a8321f' : '#241a13'; x.font = '42px Galmuri11'; x.fillText(v, sx, py0 + 355); });
   x.fillStyle = '#c8b38a'; x.fillRect(L, py0 + 385, pw - 100, 2);
@@ -1388,6 +1500,7 @@ function codexStat(d) {
   if (d.splash) ex.push(`폭발 ${d.splash}`); if (d.pierce) ex.push(`관통 ${d.pierce}`); if (d.bounce) ex.push(`튕김 ${d.bounce}`);
   if (d.multi) ex.push(`동시 ${d.multi}명`); if (d.chain) ex.push(`연쇄 ${d.chain}`); if (d.crit) ex.push(`치명타 +${pct(d.crit)}`);
   if (d.stun) ex.push(`기절 ${d.stun}초`); if (d.execute) ex.push(`체력 ${pct(d.execute)} 이하 처치`); if (d.goldOnKill) ex.push(`처치 시 +${d.goldOnKill}냥`);
+  if (d.sweep) ex.push('둘레 베기'); if (d.bossDmg) ex.push(`보스 피해 +${pct(d.bossDmg)}`); if (d.mark) ex.push(`낙인 ${d.mark}초 (받는 피해 +25%)`); if (d.field) ex.push(`${d.field.t}초 지대 · 감속 ${pct(d.field.slow)}`); if (d.knock) ex.push('밀쳐내기'); if (d.lifeOnKill) ex.push(`처치 시 체력 +${d.lifeOnKill}`);
   return ex.join(' · ');
 }
 function codexItems() {
@@ -1417,7 +1530,7 @@ function codexShop() {
     <ul class="rules"><li>새로고침은 라운드마다 무료 ${BASE.freeRerolls + perkL('reroll')}번, 그다음은 (15 + 라운드×4)냥부터 할 때마다 50%씩 비싸집니다.</li><li>수호 기억 <b>눈썰미</b>는 희귀·전설이 뜨는 비율을 단계마다 15%씩 올립니다.</li><li>같은 물건을 또 사면 봇짐 한 칸에 ×2, ×3으로 겹칩니다. 봇짐 24칸은 물건 종류 수로 셉니다.</li><li>무기는 겹친 만큼 모두 쏩니다. 무기가 아닌 물건은 ${STACK_MAX}개까지 겹치고, 겹칠수록 효과가 줄어듭니다: 1개째 100%, 2개째 60%, 3개째 40%, 4개째부터 30%.</li><li>전당포·환전상 이자는 겹치지 않고 가장 좋은 하나만 적용됩니다.</li></ul>`;
 }
 function codexRounds() {
-  const foes = ['runner', 'wolf', 'wisp', 'grunt', 'bandit', 'guard', 'gangsi', 'hareubang', 'giant'];
+  const foes = ['runner', 'wolf', 'wisp', 'grunt', 'bandit', 'guard', 'gangsi', 'hareubang', 'giant', 'changgwi', 'geuseundae', 'shadow'];
   const sprite = k => SPRITES[FOES[k].spr].frames[0].toDataURL();
   const armorCell = a => `<span class="cx-armor" style="--sc:${ARMORS[a].color}">${ARMORS[a].name}</span>`;
   const weakTo = a => TYPE_IDS.filter(t => TYPES[t].strong === a).map(t => TYPES[t].name).join('');
@@ -1426,7 +1539,7 @@ function codexRounds() {
     <div class="cx-two"><div><h3>라운드별 갑옷</h3><table class="rank"><tbody><tr><td>1~3</td><td>${armorCell('light')} ${armorCell('medium')}</td></tr><tr><td>4~7</td><td>+ ${armorCell('heavy')}</td></tr><tr><td>8~40</td><td>+ ${armorCell('fort')}</td></tr></tbody></table>
       <h3>갑옷과 약점</h3><table class="rank"><tbody>${ARMOR_IDS.map(a => `<tr><td>${armorCell(a)}</td><td>${weakTo(a)}에 2배</td><td class="dim">${ARMORS[a].note}</td></tr>`).join('')}</tbody></table>
       <h3>강해지는 정도</h3><ul class="rules"><li>적 수: 1라운드 약 ${Math.round(10.7)}마리 → 20라운드 ${Math.round(24)} → 40라운드 ${Math.round(38)} (보통)</li><li>체력: 라운드마다 ×1.15 (20라운드는 1라운드의 약 ${Math.round(Math.pow(1.15, 19))}배)</li><li>공격력 +6%, 현상금 +5% / 라운드</li></ul></div>
-    <div><h3>적</h3><table class="rank cx-foes"><thead><tr><th></th><th>이름</th><th>갑옷</th><th class="r">체력</th><th class="r">빠르기</th></tr></thead><tbody>${foes.map(k => `<tr><td><img class="px" alt="" src="${sprite(k)}"></td><td>${FOES[k].name}</td><td>${armorCell(FOES[k].armor)}</td><td class="r">${FOES[k].hp}</td><td class="r">${FOES[k].spd}</td></tr>`).join('')}</tbody></table><p class="dim small">체력은 1라운드 보통 난이도 기준입니다.</p></div></div>
+    <div><h3>적</h3><table class="rank cx-foes"><thead><tr><th></th><th>이름</th><th>갑옷</th><th class="r">체력</th><th class="r">빠르기</th></tr></thead><tbody>${foes.map(k => `<tr><td><img class="px" alt="" src="${sprite(k)}"></td><td>${FOES[k].name}</td><td>${armorCell(FOES[k].armor)}</td><td class="r">${FOES[k].hp}</td><td class="r">${FOES[k].spd}</td></tr>${FOES[k].note ? `<tr class="cx-note"><td></td><td colspan="4" class="dim small">${FOES[k].note}</td></tr>` : ''}`).join('')}</tbody></table><p class="dim small">체력은 1라운드 보통 난이도 기준입니다.</p></div></div>
     <h3>특별한 라운드</h3><table class="rank"><tbody><tr><td>${TREASURE_ROUNDS.join(' · ')}</td><td><img class="px cx-mini" alt="" src="${sprite('treasure')}"> <b>보물 도깨비</b>: 잡으면 선물 셋 중 하나를 고릅니다. 24초 뒤 달아납니다.</td></tr>${bosses.map(([r, k, t]) => `<tr><td>${r > ROUNDS ? '40 뒤' : r}</td><td><img class="px cx-mini" alt="" src="${sprite(k)}"> <b>${FOES[k].name}</b>${FOES[k].armor === 'cycle' ? '' : ` ${armorCell(FOES[k].armor)}`}: ${t}</td></tr>`).join('')}</tbody></table><h3>보스 특성 (악몽부터)</h3><table class="rank"><tbody>${DIFFS.filter(d => d.trait).map(d => `<tr><td>${d.name}</td><td><b>${BOSS_TRAITS[d.trait].name}</b></td><td>${BOSS_TRAITS[d.trait].desc}</td></tr>`).join('')}</tbody></table>`;
 }
 function codexSets() {
@@ -1456,14 +1569,16 @@ function showMenu(view = 'title') {
     const wins = DIFFS.filter(d => P.wins[d.id]).map(d => d.name);
     m.innerHTML = `<div class="tl-row">${Cloud.api ? `<button class="acct-btn${Cloud.acct ? ' in' : ''}" data-act="acct">${Cloud.acct ? `${Cloud.acct.id} ✓` : '게스트 · 로그인'}</button>` : ''}<button class="acct-btn" data-act="news">봉수 소식${newsUnseen() ? '<span class="new">NEW</span>' : ''}</button>${donateLinks().length ? '<button class="acct-btn fire" data-act="donate">장작 보태기 · 서버비</button>' : ''}</div><div class="first-band" id="firstBand" data-act="firsts" role="button" tabindex="0" ${Cloud.firsts ? '' : 'hidden'}>${firstHtml()}</div><div class="title-wrap"><div class="logo"><h1>봉화대 사수</h1><span class="seal-big">봉수</span><span class="logo-sub">다섯 홰의 불이 꺼지기 전에</span></div>
       <nav class="mnav">
-        <button class="mbtn main" data-act="go-select" data-focus>출정하기</button>
-        <button class="mbtn rank-btn" data-act="go-rank"><span>주간 랭킹전 <span class="badge">${triesLeft()}/${RANK_TRIES}</span></span><small>매주 일요일 22시 갱신</small></button>
-        <button class="mbtn" data-act="perks">수호 기억 <span class="badge gold">${fmt(P.shards)}</span></button>
-        <button class="mbtn" data-act="codex">도감 <span class="badge">${ITEMS.length}</span></button>
-        <button class="mbtn" data-act="hall">명예의 전당</button>
-        <button class="mbtn" data-act="settings">설정</button>
+        <button class="mbtn main wide" data-act="go-select" data-focus>출정하기</button>
+        <button class="mbtn map-btn wide" data-act="go-map"><span>봉수로 지도 <span class="badge">${STAGES.filter(stageCleared).length}/${STAGES.length}</span></span><small>조선 다섯 봉수로를 한양까지</small></button>
+        <button class="mbtn rank-btn wide" data-act="go-rank"><span>주간 랭킹전 <span class="badge">${triesLeft()}/${RANK_TRIES}</span></span><small>매주 일요일 22시 갱신</small></button>
+        <button class="mbtn half" data-act="perks">수호 기억 <span class="badge gold">${fmt(P.shards)}</span></button>
+        <button class="mbtn half" data-act="ach">업적 <span class="badge">${Object.keys(P.ach).length}/${ACHS.length}</span></button>
+        <button class="mbtn half" data-act="codex">도감 <span class="badge">${ITEMS.length}</span></button>
+        <button class="mbtn half" data-act="hall">명예의 전당</button>
+        <button class="mbtn half wide" data-act="settings">설정</button>
       </nav></div>
-      <aside class="corner paper"><div><span class="dim">기억 조각</span> <b class="gold">${fmt(P.shards)}</b></div><div><span class="dim">이긴 난이도</span> ${wins.length ? wins.join(' · ') : '아직 없음'}</div><div><span class="dim">플레이</span> ${fmt(P.runs)}판 · ${hoursText(P.playSec)}</div>${P.netherAt ? `<div><span class="dim">저승길까지</span> ${hoursText(P.netherAt)}</div>` : ''}</aside>
+      <aside class="corner paper">${P.title ? `<div><span class="dim">칭호</span> <b class="verm">${achTitle(P.title)}</b></div>` : ''}<div><span class="dim">기억 조각</span> <b class="gold">${fmt(P.shards)}</b></div><div><span class="dim">이긴 난이도</span> ${wins.length ? wins.join(' · ') : '아직 없음'}</div><div><span class="dim">플레이</span> ${fmt(P.runs)}판 · ${hoursText(P.playSec)}</div>${P.netherAt ? `<div><span class="dim">저승길까지</span> ${hoursText(P.netherAt)}</div>` : ''}</aside>
       <div class="visits" id="visits">${visitHtml()}</div>
       <footer class="credit"><a href="https://blog.naver.com/bhdefence" target="_blank" rel="noopener">공식 블로그</a> · <a href="about.html">게임 소개</a> · <a href="privacy.html">개인정보처리방침</a> · 글꼴 Galmuri (SIL OFL 1.1)</footer>`;
   } else if (view === 'select') renderSelect();
@@ -1472,6 +1587,8 @@ function showMenu(view = 'title') {
   else if (view === 'rank') renderRankMenu();
   else if (view === 'settings') renderSettings();
   else if (view === 'codex') renderCodex();
+  else if (view === 'map') renderMap();
+  else if (view === 'ach') renderAch();
   const f = $('#menuBody [data-focus]') || $('#menuBody button'); if (f) f.focus({ preventScroll: true });
 }
 function panelHead(title) { return `<header class="phead"><h2>${title}</h2><button class="btn" data-act="go-title">닫기 [Esc]</button></header>`; }
@@ -1498,6 +1615,78 @@ function drawPreview(d) {
   darkPass(p, FW, FH, T.amb, Math.min(0.8, T.dark + 0.08), T.edge, L, CX, CY);
   for (const [k, x, y] of foes.concat([['dragon', CX + 118 + dr.w / 2, CY + 40]])) { const sp = SPRITES[k], ox = x - sp.w / 2, oy = y - sp.h; for (const [ex, ey] of sp.eyes) pr(p, x > CX ? ox + ex : ox + sp.w - sp.scale - ex, oy + ey, sp.scale, sp.scale, k === 'dragon' ? '#ff4a3a' : '#ff8a4a'); }
 }
+// ───────────────────────── 봉수로 지도 ─────────────────────────
+const stageCleared = st => !!(P.map[st.id] && P.map[st.id].clears);
+function stageOpen(st) {
+  if (st.id === FINALE.id) return ROUTES.every(rt => routeDone(rt, P));
+  if (st.ri > 0 && !routeDone(ROUTES[st.ri - 1], P)) return false;
+  return st.si === 0 || stageCleared(STAGE[st.route.stages[st.si - 1].id]);
+}
+function nextStage(st) {
+  if (st.id === FINALE.id) return null;
+  if (st.si < 4) return STAGE[st.route.stages[st.si + 1].id];
+  const rt = ROUTES[st.ri + 1];
+  return rt ? STAGE[rt.stages[0].id] : stageOpen(STAGE[FINALE.id]) ? STAGE[FINALE.id] : null;
+}
+let mapSel = null;
+// The peninsula drawn from a few dozen coast points (longitude, latitude); good enough to carry the five routes.
+const COAST = [[124.35,40.0],[124.9,40.45],[125.5,40.75],[126.1,41.05],[126.6,41.55],[127.1,41.65],[127.6,41.45],[128.1,41.6],[128.3,41.98],[128.9,42.05],[129.3,42.4],[129.75,42.45],[130.1,42.65],[130.5,42.55],[130.7,42.3],[130.4,42.2],[129.9,41.85],[129.6,41.4],[129.4,40.9],[128.9,40.6],[128.3,40.1],[127.7,39.8],[127.5,39.4],[127.6,39.05],[128.0,38.6],[128.4,38.2],[128.7,37.9],[129.0,37.6],[129.3,37.2],[129.45,36.6],[129.5,36.1],[129.45,35.6],[129.3,35.3],[129.05,35.05],[128.6,34.9],[128.2,34.85],[127.8,34.7],[127.4,34.55],[126.9,34.4],[126.5,34.35],[126.35,34.65],[126.4,35.0],[126.45,35.5],[126.65,35.95],[126.55,36.3],[126.25,36.7],[126.45,36.95],[126.7,37.05],[126.6,37.45],[126.4,37.7],[126.1,37.75],[125.7,37.95],[125.25,37.8],[124.8,38.05],[125.0,38.45],[125.4,38.7],[125.15,39.1],[124.9,39.45],[124.6,39.65]];
+const proj = ([lon, lat]) => [(lon - 124.0) * 52 + 10, (43.0 - lat) * 62 + 10];
+// Where each leg's beacon sits on the map. The five routes all end within a few li of the capital, so those last
+// beacons are spread on a small ring around 목멱산 in the direction their road comes from.
+function stagePos(st) {
+  const p = proj(st.at), h = proj(FINALE.at);
+  if (st.id === FINALE.id || Math.hypot(p[0] - h[0], p[1] - h[1]) > 16) return p;
+  const q = proj(st.route.stages[st.si - 1].at), d = Math.hypot(q[0] - h[0], q[1] - h[1]) || 1;
+  return [h[0] + (q[0] - h[0]) / d * 26, h[1] + (q[1] - h[1]) / d * 26];
+}
+function mapSvg(sel) {
+  const pt = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`, h = stagePos(STAGE[FINALE.id]);
+  let o = `<svg class="jmap" viewBox="0 0 384 640" role="img" aria-label="조선 봉수로 지도"><path class="land" d="M${COAST.map(c => pt(proj(c))).join('L')}Z"/><ellipse class="land" cx="${proj([126.55, 33.38])[0]}" cy="${proj([126.55, 33.38])[1]}" rx="20" ry="9"/>`;
+  o += `<text class="sea" x="320" y="330">동해</text><text class="sea" x="22" y="430">서해</text><text class="sea" x="230" y="610">남해</text>`;
+  for (const rt of ROUTES) {
+    const pts = rt.stages.map(x => stagePos(STAGE[x.id])), open = stageOpen(STAGE[rt.stages[0].id]);
+    o += `<polyline class="route${open ? '' : ' off'}" style="--rc:${rt.color}" points="${pts.map(pt).join(' ')} ${pt(h)}"/>`;
+    const [dx, dy, anc, at = 0] = { r2: [10, 4, 'start'], r5: [-8, 16, 'end'], r1: [-10, 4, 'end', 1], r3: [8, -8, 'start'], r4: [-6, -15, 'start'] }[rt.id], f = pts[at];
+    o += `<text class="rname${open ? '' : ' off'}" x="${f[0] + dx}" y="${f[1] + dy}" text-anchor="${anc}" style="--rc:${rt.color}">${rt.name}</text>`;
+  }
+  for (const st of STAGES) {
+    const [x, y] = stagePos(st), done = stageCleared(st), open = stageOpen(st), isSel = st.id === sel, fin = st.id === FINALE.id;
+    o += `<g class="node${done ? ' done' : open ? ' open' : ' lock'}${isSel ? ' sel' : ''}${fin ? ' fin' : ''}" data-act="stage" data-id="${st.id}" role="button" tabindex="0" aria-label="${st.name}"><title>${st.name}${done ? ' · 봉화 올림' : open ? ' · 도전 가능' : ' · 잠김'}</title>`;
+    if (isSel) o += `<circle class="halo" cx="${x}" cy="${y}" r="${fin ? 15 : 11}"/>`;
+    o += `<circle class="dot" cx="${x}" cy="${y}" r="${fin ? 9 : done || open ? 6 : 4.5}"/>${done ? `<path class="fl" d="M${x} ${y - 4}q3 3 0 6q-3-3 0-6z"/>` : ''}`;
+    if (isSel || fin || (st.route && st.route.id === STAGE[sel].route?.id)) { const [dx, dy, anc] = { dadaepo: [-9, 4, 'end'], seosura: [0, 18, 'middle'], muak_w: [-8, 15, 'end'] }[st.id] || [fin ? 13 : 9, 4, 'start']; o += `<text class="sname" x="${x + dx}" y="${y + dy}" text-anchor="${anc}">${st.name}</text>`; }
+    o += `</g>`;
+  }
+  return o + '</svg>';
+}
+function renderMap() {
+  if (!mapSel || !STAGE[mapSel]) mapSel = (STAGES.find(st => stageOpen(st) && !stageCleared(st)) || STAGES[0]).id;
+  const st = STAGE[mapSel], rt = st.route, open = stageOpen(st), m = P.map[st.id], d = stageDiff(st);
+  const legs = rt ? rt.stages.map(x => STAGE[x.id]) : [];
+  const why = open ? '' : st.id === FINALE.id ? '다섯 봉수로를 모두 이으면 열립니다' : st.si > 0 && (st.ri === 0 || routeDone(ROUTES[st.ri - 1], P)) ? `앞 구간 ${rt.stages[st.si - 1].name}의 봉화를 올리면 열립니다` : `${ROUTES[st.ri - 1].name}을 한양까지 이으면 열립니다`;
+  const bossIco = k => `<img class="px cx-mini" alt="" src="${SPRITES[FOES[k].spr].frames[0].toDataURL()}">`;
+  $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('봉수로 지도')}<div class="map-grid"><div class="map-wrap">${mapSvg(mapSel)}</div><div class="map-side">
+    <div class="rtabs">${ROUTES.map(r => `<button class="${rt && rt.id === r.id ? 'on' : ''}${stageOpen(STAGE[r.stages[0].id]) ? '' : ' off'}" style="--rc:${r.color}" data-act="route" data-id="${r.id}">${r.name}${routeDone(r, P) ? ' ✓' : ''}</button>`).join('')}<button class="${rt ? '' : 'on'}${stageOpen(STAGE[FINALE.id]) ? '' : ' off'}" style="--rc:#2b1d10" data-act="route" data-id="finale">목멱산</button></div>
+    ${rt ? `<p class="rhead"><b style="color:${rt.color}">${rt.no} ${rt.name}</b> <span class="dim">${rt.from}</span></p><ol class="legs">${legs.map(x => `<li class="${x.id === st.id ? 'on' : ''}${stageCleared(x) ? ' done' : stageOpen(x) ? '' : ' lock'}"><button data-act="stage" data-id="${x.id}">${x.si + 1}. ${x.name}</button></li>`).join('')}</ol>` : '<p class="rhead"><b>마지막 봉화 · 목멱산</b> <span class="dim">다섯 봉수로가 모이는 한양 남산</span></p>'}
+    <div class="stage-card"><div class="sc-h"><h3>${st.name}</h3><span class="dim">${st.rounds}라운드 뒤 ${bossIco(st.boss)} ${FOES[st.boss].name}</span></div>
+      <div class="rules-chips">${st.rules.length ? st.rules.map(r => `<span class="rule" title="${ruleDesc(r)}"><b>${ruleName(r)}</b> ${ruleDesc(r)}</span>`).join('') : '<span class="rule"><b>평온</b> 특별한 규칙이 없습니다</span>'}</div>
+      <ul class="rules small"><li>적 체력 ×${d.hp.toFixed(2)} · 수 ×${d.count.toFixed(2)} · 보스 ${FOES[st.boss].name} 체력 ×${st.bossHp.toFixed(2)}</li>${Object.keys(st.mid).length ? `<li>중간 보스 · ${Object.entries(st.mid).map(([r, k]) => `${r}라운드 ${FOES[k].name}`).join(', ')}</li>` : ''}<li>보상 · 버틴 라운드마다 기억 조각 ${st.mem} · 이기면 +${Math.round(25 * st.mem)}${stageCleared(st) ? '' : ` · <b class="gold">처음 올리면 +${st.bonus}</b>`}</li></ul>
+      <p class="sc-rec">${m ? (m.clears ? `봉화 ${m.clears}번 올림` : `최고 ${m.best}라운드`) : '아직 도전 기록 없음'}</p>
+      ${open ? `<button class="btn primary big" data-act="stage-go" data-id="${st.id}" data-focus>▶ 출정 [Enter]</button>` : `<p class="lock-note">🔒 ${why}</p>`}</div></div></div></div>`;
+}
+// ───────────────────────── 업적 · 칭호 ─────────────────────────
+function renderAch() {
+  const groups = [...new Set(ACHS.map(a => a.g))], n = Object.keys(P.ach).length;
+  const date = t => { const d = new Date(t + 9 * 3600e3); return `${d.getUTCMonth() + 1}.${d.getUTCDate()}`; };
+  $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('업적')}<p class="lead">이룬 업적 <b class="gold">${n} / ${ACHS.length}</b> · 이룬 업적의 칭호를 하나 골라 달면 명예의 전당에서 이름 옆에 보입니다.${P.title ? ` 지금 칭호 <b class="verm">「${achTitle(P.title)}」</b> <button class="linkish" data-act="title-set" data-id="">내리기</button>` : ''}</p>
+    <div class="ach-wrap">${groups.map(gname => `<h3>${gname}</h3><div class="ach-grid">${ACHS.filter(a => a.g === gname).map(a => {
+      const got = P.ach[a.id], [have, need] = a.goal ? a.goal(P) : [0, 0], on = P.title === a.id;
+      return `<div class="ach${got ? ' got' : ''}${on ? ' on' : ''}"><div class="ach-h"><b>${a.name}</b>${got ? `<span class="dim small">${date(got)}</span>` : ''}</div><p>${a.desc}${ACH_HARD.includes(a.id) ? ' <span class="dim">(보통 이상 40라운드 판)</span>' : ''}</p>
+        ${a.goal && !got ? `<div class="bar"><i style="width:${Math.min(100, have / need * 100).toFixed(1)}%"></i></div><p class="dim small">${fmt(Math.min(have, need))} / ${fmt(need)}</p>` : ''}
+        <div class="ach-t"><span>칭호 「${a.title}」</span>${got ? (on ? '<span class="gold small">다는 중</span>' : `<button class="btn small" data-act="title-set" data-id="${a.id}">달기</button>`) : ''}</div></div>`;
+    }).join('')}</div>`).join('')}</div></div>`;
+}
 function renderPerks() {
   $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('수호 기억')}<p class="lead">판을 마칠 때마다 버틴 라운드만큼 <b class="gold">기억 조각</b>이 쌓입니다. 조각으로 봉화대를 영구히 키우세요. 지금 <b class="gold">${fmt(P.shards)}</b>개.</p>
     <div class="perks">${PERKS.map(p => { const l = perkL(p.id), max = l >= p.max, cost = perkCost(p, l); return `<div class="perk"><div class="ph"><b>${p.name}</b><span class="lv">${l} / ${p.max}</span></div><div class="pips">${Array.from({ length: p.max }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('')}</div><p>${l ? p.desc(l) : '아직 배우지 않음'}</p>${max ? '<p class="gold">다 배웠습니다</p>' : `<p class="dim">다음: ${p.desc(l + 1)}</p><button class="btn primary" data-act="perk" data-id="${p.id}" ${P.shards < cost ? 'disabled' : ''}>조각 ${cost}개로 배우기</button>`}</div>`; }).join('')}</div></div>`;
@@ -1505,6 +1694,7 @@ function renderPerks() {
 function buyPerk(id) {
   const p = PERK[id], l = perkL(id), cost = perkCost(p, l); if (l >= p.max || P.shards < cost) return;
   P.shards -= cost; P.perks[id] = l + 1; persist(); Sfx.play('buy'); renderPerks();
+  for (const a of checkAch()) toast(`업적 「${ACH[a].name}」 · 칭호 「${ACH[a].title}」`);
   const b = $(`[data-act="perk"][data-id="${id}"]`); if (b) b.focus();
 }
 function renderRankMenu() {
@@ -1532,7 +1722,7 @@ function fillBoard(wk) {
   if (!rows.length) { const tr = document.createElement('tr'), td = document.createElement('td'); td.colSpan = 5; td.className = 'empty'; td.textContent = online && !Cloud.boardLoaded ? '…' : '아직 기록이 없습니다'; tr.append(td); body.append(tr); return; }
   rows.slice(0, 50).forEach((r, i) => {
     const tr = document.createElement('tr'); if (online && Cloud.uid && r.id === Cloud.uid) tr.className = 'me';
-    [[String(i + 1), 'rk'], [r.nick || '무명', 'nick'], [fmt(r.score), 'r'], [r.win ? '승리' : `${r.round}R`, 'r'], [fmt(r.kills), 'r']].forEach(([t, c]) => { const td = document.createElement('td'); td.textContent = t; td.className = c; tr.append(td); });
+    [[String(i + 1), 'rk'], [r.nick || '무명', 'nick'], [fmt(r.score), 'r'], [r.win ? '승리' : `${r.round}R`, 'r'], [fmt(r.kills), 'r']].forEach(([t, c]) => { const td = document.createElement('td'); td.textContent = t; td.className = c; if (c === 'nick' && r.title) { const sm = document.createElement('small'); sm.className = 'ttl'; sm.textContent = r.title; td.prepend(sm, ' '); } tr.append(td); });
     body.append(tr);
   });
 }
@@ -1548,13 +1738,15 @@ function renderSettings() {
     <h3>조작</h3><table class="keys"><tr><td>1 ~ 8</td><td>상점 칸 구매 (휴대폰은 두 번 눌러 구매)</td></tr><tr><td>R</td><td>상점 새로고침</td></tr><tr><td>Z</td><td>천벌: 화면의 적을 한꺼번에 쓸어냅니다 (보스는 일부 피해)</td></tr><tr><td>B · D · G · H</td><td>세트 · 딜미터 · 사거리 · 상성표</td></tr><tr><td>Tab</td><td>배속 ×1 ×2 ×3</td></tr><tr><td>Space · Esc</td><td>잠시 멈춤</td></tr></table>
     <h3>진행</h3><p class="dim">진행은 이 브라우저${Cloud.uid ? '와 계정 저장소' : ''}에 저장됩니다.${Cloud.api ? (Cloud.acct ? ` (계정: ${Cloud.acct.id})` : ' 로그인하면 다른 기기에서도 이어서 할 수 있습니다.') : ''}</p><div class="actions" style="flex:none"><button class="btn" data-act="guide-again">첫 출정 안내 다시 보기 (쉬움으로 시작)</button><button class="btn danger" data-act="reset">모든 진행 지우기</button></div></div></div>`;
 }
-function startRun(diffId, ranked) {
+function startStage(id) { const st = STAGE[id]; if (st && stageOpen(st)) startRun(null, false, st); }
+function restartRun() { if (R.stage) startStage(R.stage.id); else startRun(R.diff.id, false); }
+function startRun(diffId, ranked, stage) {
   if (ranked) { if (triesLeft() <= 0) return; if (P.ranked.day !== rankDayId()) P.ranked = { day: rankDayId(), used: 0 }; P.ranked.used++; persist(); }
   Cloud.play('start'); if (ranked) Cloud.play('ranked');
-  closeModal(); newRun(diffId, ranked); mode = 'run'; paused = false; speed = 1; fpanel = null; invFilter = 'all'; selected = null; hideTip();
+  closeModal(); newRun(diffId, ranked, stage); mode = 'run'; paused = false; speed = 1; fpanel = null; invFilter = 'all'; selected = null; hideTip();
   $('#menu').hidden = true; $('#fpanel').hidden = true; for (const b of $$('[data-act="fp"]')) b.classList.remove('on');
   renderShop(); renderInv(); renderHud(true); Sfx.ensure();
-  banner(R.ranked ? `주간 랭킹전 ${weekId()}` : R.diff.name, R.ranked ? `수호 기억 없이 모두 같은 출발선 · ${PREP_TIME}초 뒤 첫 라운드` : `${PREP_TIME}초 뒤 첫 라운드 · 장터에서 무기를 사세요`);
+  banner(R.ranked ? `주간 랭킹전 ${weekId()}` : R.stage ? R.stage.name : R.diff.name, R.ranked ? `수호 기억 없이 모두 같은 출발선 · ${PREP_TIME}초 뒤 첫 라운드` : R.stage ? `${R.stage.rounds}라운드 뒤 ${FOES[R.stage.boss].name}${R.stage.rules.length ? ' · ' + R.stage.rules.map(ruleName).join(' · ') : ''}` : `${PREP_TIME}초 뒤 첫 라운드 · 장터에서 무기를 사세요`);
   closeCoach(false);
 }
 // ── 첫 출정 안내: one tip at a time, at the moment it matters, with the part of the screen it talks about lit up ──
@@ -1634,9 +1826,9 @@ document.addEventListener('click', ev => {
     case 'speed': speed = speed % 3 + 1; renderHud(true); break;
     case 'pause': setPaused(!paused); break;
     case 'resume': setPaused(false); break;
-    case 'restart': closeModal(); startRun(R.diff.id, false); break;
+    case 'restart': closeModal(); restartRun(); break;
     case 'quit': closeModal(); paused = false; if (R.state === 'run') { R.state = 'lost'; const res = finishRun(); showResult(res); } break;
-    case 'again': startRun(R.diff.id, false); break;
+    case 'again': restartRun(); break;
     case 'share': openShare(); break;
     case 'share-send': shareSend(); break;
     case 'share-copy': shareCopy(el); break;
@@ -1649,6 +1841,12 @@ document.addEventListener('click', ev => {
     case 'submit': submitRank(); break;
     case 'go-title': showMenu('title'); break;
     case 'go-select': showMenu('select'); break;
+    case 'go-map': showMenu('map'); break;
+    case 'stage': mapSel = id; renderMap(); break;
+    case 'route': { const rt = ROUTES.find(x => x.id === id); mapSel = rt ? (rt.stages.map(x => STAGE[x.id]).find(x => stageOpen(x) && !stageCleared(x)) || STAGE[rt.stages[0].id]).id : FINALE.id; renderMap(); break; }
+    case 'stage-go': startStage(id || mapSel); break;
+    case 'ach': showMenu('ach'); break;
+    case 'title-set': P.title = id && P.ach[id] ? id : ''; persist(); Cloud.syncTitle(); renderAch(); toast(P.title ? `「${achTitle(P.title)}」 칭호를 달았습니다` : '칭호를 내렸습니다'); break;
     case 'go-rank': showMenu('rank'); break;
     case 'perks': showMenu('perks'); break;
     case 'hall': showMenu('hall'); break;
@@ -1686,6 +1884,7 @@ window.addEventListener('keydown', ev => {
     if (k === 'Escape' && !$('#modal').hidden) { closeModal(); ev.preventDefault(); return; }
     if (k === 'Escape' && menuView !== 'title') { showMenu('title'); ev.preventDefault(); }
     else if (k === 'Enter' && menuView === 'select') { if (unlocked(DIFF[selDiff])) startRun(selDiff, false); ev.preventDefault(); }
+    else if (k === 'Enter' && menuView === 'map') { startStage(mapSel); ev.preventDefault(); }
     else if ((k === 'ArrowUp' || k === 'ArrowDown') && menuView === 'select') { const ok = DIFFS.filter(unlocked), i = ok.findIndex(d => d.id === selDiff); selDiff = ok[(i + (k === 'ArrowUp' ? -1 : 1) + ok.length) % ok.length].id; renderSelect(); ev.preventDefault(); }
     return;
   }
@@ -1695,7 +1894,7 @@ window.addEventListener('keydown', ev => {
   if (!$('#modal').hidden && !paused) return;
   if (coachOn && GUIDE[coachOn].ack && (k === 'Enter' || k === 'Space')) { closeCoach(true); ev.preventDefault(); return; }
   if (k === 'Space' || k === 'Escape') { if (coachOn) return; setPaused(!paused); ev.preventDefault(); return; }
-  if (paused) { if (k === 'KeyN' && !R.ranked) { closeModal(); startRun(R.diff.id, false); } return; }
+  if (paused) { if (k === 'KeyN' && !R.ranked) { closeModal(); restartRun(); } return; }
   if (/^Digit[1-8]$/.test(k)) { buy(+k.slice(5) - 1); ev.preventDefault(); }
   else if (/^Numpad[1-8]$/.test(k)) { buy(+k.slice(6) - 1); ev.preventDefault(); }
   else if (k === 'KeyR') reroll();
@@ -1761,7 +1960,7 @@ const Cloud = {
   async signedIn(res) {
     this.setAcct({ id: res.id, token: res.token });
     if (!P.nick) P.nick = res.id;
-    await this.pullSave();
+    await this.pullSave(); this.syncTitle();
     if (this.firsts) for (const d of DIFFS) if (P.wins[d.id] && !this.firsts[d.id]) await this.claimFirst(d.id, true);
   },
   async pullSave() {
@@ -1778,7 +1977,7 @@ const Cloud = {
   // Until then nothing is uploaded, so this browser's copy can't overwrite it.
   held: null,
   hold(remote, msg = '계정에 저장된 기록을 불러왔습니다') { this.held = remote; this.heldMsg = msg; if (mode === 'menu') this.adoptHeld(); },
-  adoptHeld() { if (!this.held) return; const h = this.held; this.held = null; h.owner = this.uid || h.owner; adoptProfile(h); if (this.api) this.queue(); toast(this.heldMsg); },
+  adoptHeld() { if (!this.held) return; const h = this.held; this.held = null; h.owner = this.uid || h.owner; adoptProfile(h); checkAch(); if (this.api) this.queue(); toast(this.heldMsg); },
   wipe: false,
   visits: null,
   // A visit is counted only after the first real tap, click or key press, so crawlers and link previews that
@@ -1796,6 +1995,8 @@ const Cloud = {
     for (const t of ['pointerdown', 'keydown']) addEventListener(t, go, true);
   },
   showVisits(r) { this.visits = { total: r.total, today: r.today, plays: r.plays }; const el = $('#visits'); if (el) el.innerHTML = visitHtml(); },
+  // 칭호: the server keeps only which achievement's title to show beside the id in 명예의 전당
+  syncTitle() { if (this.api && this.acct) this.call('POST', '/title', { title: P.title || '' }); },
   play(kind) { if (!this.api || navigator.webdriver) return; this.call('POST', '/play', { kind, from: FROM }); if (kind === 'start' && this.visits && this.visits.plays != null) this.visits.plays++; },
   // 첫 봉화 완주: diff id → { id, at }
   firsts: null,
@@ -1994,7 +2195,7 @@ const GIFT_ICON = { coins: 'coin', heal: 'potion', reroll: 'sack', half: 'target
   bakeSprites(); makeTextures();
   FLAME_ON = bakeMap(ICONS.flame, {}, 1).toDataURL(); FLAME_OFF = bakeMap(ICONS.flame, { o: '#3a2a24', y: '#2c2420', f: '#4a3a30' }, 1).toDataURL();
   $('#purse .pouch').src = iconUrl('sack');
-  fit(); showMenu('title');
+  fit(); checkAch(); showMenu('title');
   if (document.fonts && document.fonts.load) for (const f of ['22px Galmuri11', '40px "East Sea Dokdo"', '20px "Song Myung"']) document.fonts.load(f).catch(() => {});
   if (location.hash === '#dev') window.__bh = { get R() { return R; }, get P() { return P; }, newRun, startRun, update, buy, reroll, smite, sellItem, addItem, refreshStats, showMenu, takeGift, offerGift, ITEMS, ITEM, FOES, computeStats };
   requestAnimationFrame(frame);

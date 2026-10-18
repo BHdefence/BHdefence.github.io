@@ -11,6 +11,8 @@ const NOTE_MAX = 500;
 // The developer's own accounts never take a 첫 봉화 완주 slot, so those stay open for players.
 const STAFF_IDS = ['ksjer1124', 'kkjlg'];
 const PLAY_KINDS = ['start', 'ranked', 'end', 'win'];
+// 칭호 per achievement id (kept in step with ACHS in data.js); the game sends the id, the board shows the title.
+const TITLES = { first: '신참 봉수군', w_easy: '봉수군', w_normal: '파수꾼', w_hard: '봉수장', w_nm1: '악몽을 걷는 자', w_nm3: '새벽을 부른 자', w_nether: '저승을 거닌 자', w_nether3: '불멸의 수호자', runs10: '단골 수호자', runs50: '백전노장', runs100: '봉화의 화신', kills5k: '도깨비 사냥꾼', kills50k: '만 명을 벤 자', bosses20: '토벌대장', treasure10: '보물 사냥꾼', perk1: '배우는 수호자', perkmax: '천년 수호자', nosmite: '스스로 선 자', mono: '외길 무사', all5: '오방장군', noeco: '청렴한 관리', clutch: '구사일생', flawless: '철옹성', dragon60: '용 잡는 자', treasure4: '복 받은 자', kills1500: '천하장사', set3: '장인', elem2: '도사', ranked: '겨루는 자', rankwin: '명예로운 수호자', route1: '봉수로 순찰사', route5: '팔도 순찰사', capital: '도성 봉수대장' };
 // Crawlers, link-preview fetchers and headless browsers run the page too; they are never counted.
 const BOT_RE = /bot|crawl|spider|slurp|yeti|daum|preview|facebookexternalhit|kakaotalk-scrap|headless|lighthouse|pagespeed|python|curl|wget/i;
 // Where a visitor came from (?from=dc, or guessed from the referrer by the game): counted per day with the visit or play.
@@ -96,6 +98,7 @@ const ensureTables = env => (ready ??= env.DB.batch([
   env.DB.prepare('CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, text TEXT NOT NULL, at INTEGER NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS plays (day TEXT NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, kind))'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS sources (day TEXT NOT NULL, src TEXT NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, src, kind))'),
+  env.DB.prepare('CREATE TABLE IF NOT EXISTS titles (user_id TEXT PRIMARY KEY, title TEXT NOT NULL, at INTEGER NOT NULL)'),
   env.DB.prepare('CREATE TABLE IF NOT EXISTS saves_bak (user_id TEXT NOT NULL, day TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, day))'),
 ]).catch(e => { ready = null; throw e; }));
 async function body(req) { try { const b = await req.json(); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
@@ -187,9 +190,9 @@ export default {
 
       if (path === '/rank' && req.method === 'GET') {
         const week = WEEK_RE.test(url.searchParams.get('week') || '') ? url.searchParams.get('week') : weekId();
-        const rows = await env.DB.prepare('SELECT user_id AS id, score, round, win, kills, at FROM rank WHERE week = ? ORDER BY score DESC, at ASC LIMIT 50').bind(week).all();
+        const rows = await env.DB.prepare('SELECT r.user_id AS id, r.score, r.round, r.win, r.kills, r.at, t.title FROM rank r LEFT JOIN titles t ON t.user_id = r.user_id WHERE r.week = ? ORDER BY r.score DESC, r.at ASC LIMIT 50').bind(week).all();
         const cnt = await env.DB.prepare('SELECT COUNT(*) AS n FROM rank WHERE week = ?').bind(week).first();
-        return json(req, { week, count: cnt ? cnt.n : 0, rows: rows.results.map(r => ({ ...r, win: !!r.win })) });
+        return json(req, { week, count: cnt ? cnt.n : 0, rows: rows.results.map(r => ({ ...r, win: !!r.win, title: TITLES[r.title] || '' })) });
       }
 
       // everything below needs a session
@@ -204,7 +207,7 @@ export default {
       if (path === '/delete' && req.method === 'POST') {
         const b = await body(req), u = await env.DB.prepare('SELECT pw FROM users WHERE id = ?').bind(uid).first();
         if (!u || !(await checkSecret(String(b.pw || ''), u.pw))) return fail(req, 401, 'pw', '비밀번호가 맞지 않습니다.');
-        await env.DB.batch(['rank', 'saves', 'saves_bak', 'sessions', 'firsts', 'feedback'].map(t => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(uid)).concat(env.DB.prepare('DELETE FROM users WHERE id = ?').bind(uid)));
+        await env.DB.batch(['rank', 'saves', 'saves_bak', 'sessions', 'firsts', 'feedback', 'titles'].map(t => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(uid)).concat(env.DB.prepare('DELETE FROM users WHERE id = ?').bind(uid)));
         return json(req, { ok: true });
       }
       if (path === '/logout' && req.method === 'POST') {
@@ -241,6 +244,14 @@ export default {
         if (cur && cur.score >= score) return json(req, { ok: true, kept: true, prev: cur.score });
         await env.DB.prepare('INSERT OR REPLACE INTO rank (user_id, week, score, round, win, kills, at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(uid, week, score, round, win ? 1 : 0, kills, Date.now()).run();
         return json(req, { ok: true, kept: false });
+      }
+      if (path === '/title' && req.method === 'POST') {
+        if (await limited(env, `title:${uid}`, 60, 86400e3)) return fail(req, 429, 'rate', '잠시 뒤 다시 해 주세요.');
+        const t = String((await body(req)).title || '');
+        if (!t) await env.DB.prepare('DELETE FROM titles WHERE user_id = ?').bind(uid).run();
+        else if (TITLES[t]) await env.DB.prepare('INSERT OR REPLACE INTO titles (user_id, title, at) VALUES (?, ?, ?)').bind(uid, t, Date.now()).run();
+        else return fail(req, 400, 'title', '없는 칭호입니다.');
+        return json(req, { ok: true, title: TITLES[t] || '' });
       }
       if (path === '/first' && req.method === 'POST') {
         if (await limited(env, `first:${uid}`, 20, 86400e3)) return fail(req, 429, 'rate', '잠시 뒤 다시 해 주세요.');
