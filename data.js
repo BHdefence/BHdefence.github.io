@@ -259,31 +259,31 @@ const ruleOf = r => { const [k, a] = r.split(':'); return [RULES[k], a]; };
 const ruleName = r => { const [x, a] = ruleOf(r); return typeof x.name === 'function' ? x.name(a) : x.name; };
 const ruleDesc = r => { const [x, a] = ruleOf(r); return typeof x.desc === 'function' ? x.desc(a) : x.desc; };
 const ROUTES = [
-  { id: 'r2', name: '동래길', no: '제2거', from: '동래 다대포에서 광주 천림산까지', color: '#d8503a', theme: 'field', base: 1.0, stages: [
+  { id: 'r2', name: '동래길', no: '제2거', from: '동래 다대포에서 광주 천림산까지', color: '#d8503a', theme: 'field', base: 0.8, stages: [
     { id: 'dadaepo', name: '다대포', at: [128.97, 35.05], rules: [] },
     { id: 'gyeongju', name: '경주', at: [129.22, 35.85], rules: ['rich'] },
     { id: 'andong', name: '안동', at: [128.73, 36.57], rules: ['armor:fort'], theme: 'autumn' },
     { id: 'chungju', name: '충주', at: [127.93, 36.99], rules: ['swarm'], theme: 'autumn' },
     { id: 'cheollim', name: '천림산', at: [127.1, 37.42], rules: ['trait:scale'] } ] },
-  { id: 'r5', name: '남해길', no: '제5거', from: '순천 돌산포에서 양천 개화산까지', color: '#3f8fb8', theme: 'field', base: 1.25, stages: [
+  { id: 'r5', name: '남해길', no: '제5거', from: '순천 돌산포에서 양천 개화산까지', color: '#3f8fb8', theme: 'field', base: 1.0, stages: [
     { id: 'dolsan', name: '돌산포', at: [127.75, 34.7], rules: ['fog'] },
     { id: 'haenam', name: '해남', at: [126.6, 34.57], rules: ['rich', 'elite'] },
     { id: 'buan', name: '부안', at: [126.73, 35.73], rules: ['shop:arrow'] },
     { id: 'seosan', name: '서산', at: [126.45, 36.78], rules: ['fog', 'ghost'], theme: 'night' },
     { id: 'gaehwa', name: '개화산', at: [126.81, 37.58], rules: ['trait:wind'] } ] },
-  { id: 'r1', name: '관북길', no: '제1거', from: '경흥 서수라에서 양주 아차산까지', color: '#6fb6d8', theme: 'snow', base: 1.5, stages: [
+  { id: 'r1', name: '관북길', no: '제1거', from: '경흥 서수라에서 양주 아차산까지', color: '#6fb6d8', theme: 'snow', base: 1.15, stages: [
     { id: 'seosura', name: '서수라', at: [130.67, 42.3], rules: ['cold'] },
     { id: 'hoeryeong', name: '회령', at: [129.75, 42.44], rules: ['cold', 'dark'] },
     { id: 'hamheung', name: '함흥', at: [127.53, 39.92], rules: ['armor:heavy'] },
     { id: 'cheorwon', name: '철원', at: [127.31, 38.15], rules: ['cold', 'swarm'] },
     { id: 'acha', name: '아차산', at: [127.1, 37.57], rules: ['trait:pure'], theme: 'field' } ] },
-  { id: 'r3', name: '강계길', no: '제3거', from: '강계 만포진에서 무악 동봉까지', color: '#8a5ad8', theme: 'night', base: 1.75, stages: [
+  { id: 'r3', name: '강계길', no: '제3거', from: '강계 만포진에서 무악 동봉까지', color: '#8a5ad8', theme: 'night', base: 1.3, stages: [
     { id: 'manpo', name: '만포진', at: [126.25, 41.15], rules: ['swarm'] },
     { id: 'ganggye', name: '강계', at: [126.6, 40.97], rules: ['ghost'] },
     { id: 'yeongbyeon', name: '영변', at: [125.8, 39.81], rules: ['poor', 'shop:charm'] },
     { id: 'pyeongyang', name: '평양', at: [125.75, 39.03], rules: ['swarm', 'ghost'] },
     { id: 'muak_e', name: '무악 동봉', at: [126.95, 37.58], rules: ['trait:fire'] } ] },
-  { id: 'r4', name: '의주길', no: '제4거', from: '의주에서 무악 서봉까지', color: '#c99a2e', theme: 'autumn', base: 2.0, stages: [
+  { id: 'r4', name: '의주길', no: '제4거', from: '의주에서 무악 서봉까지', color: '#c99a2e', theme: 'autumn', base: 1.5, stages: [
     { id: 'uiju', name: '의주', at: [124.53, 40.2], rules: ['armor:heavy'] },
     { id: 'jeongju', name: '정주', at: [125.2, 39.7], rules: ['rush'] },
     { id: 'haeju', name: '해주', at: [125.72, 38.04], rules: ['fog'], theme: 'night' },
@@ -301,13 +301,13 @@ const LEG = [
 ];
 const STAGES = [];
 ROUTES.forEach((rt, ri) => rt.stages.forEach((st, si) => {
-  const leg = LEG[si], k = rt.base * (1 + 0.1 * si);
+  const leg = LEG[si], k = rt.base * (1 + 0.05 * si);
   STAGES.push(Object.assign({ route: rt, ri, si, theme: rt.theme, rounds: leg.rounds, boss: leg.boss, bossHp: leg.bossHp * k, mid: leg.mid,
-    treasure: [5, 15].filter(r => r < leg.rounds), hp: k, count: 0.95 + 0.05 * ri + 0.03 * si, midBoss: k * 0.8, edmg: 1 + (k - 1) * 0.45,
+    treasure: [5, 15].filter(r => r < leg.rounds), hp: k, count: 0.95 + 0.04 * ri + 0.02 * si, midBoss: k * 0.8, edmg: 1 + (k - 1) * 0.45,
     mem: +(0.9 + ri * 0.35 + si * 0.1).toFixed(2), bonus: Math.round(20 + si * 8 + ri * 12) }, st));
 }));
-STAGES.push(Object.assign({ route: null, ri: 5, si: 0, rounds: 30, boss: 'dragon', bossHp: 1.2, mid: { 10: 'chief', 20: 'bulga' }, treasure: [5, 15, 25],
-  hp: 2.6, count: 1.3, midBoss: 2.3, edmg: 1.7, mem: 3.0, bonus: 200 }, FINALE));
+STAGES.push(Object.assign({ route: null, ri: 5, si: 0, rounds: 30, boss: 'dragon', bossHp: 1.5, mid: { 10: 'chief', 20: 'bulga' }, treasure: [5, 15, 25],
+  hp: 1.9, count: 1.2, midBoss: 1.8, edmg: 1.4, mem: 3.0, bonus: 200 }, FINALE));
 const STAGE = Object.fromEntries(STAGES.map(s => [s.id, s]));
 // The run's difficulty for a leg: the leg's own numbers, then its rules.
 function stageDiff(st) {
@@ -319,6 +319,38 @@ function stageDiff(st) {
 const routeDone = (rt, p) => rt.stages.every(st => p.map[st.id] && p.map[st.id].clears > 0);
 
 // 업적: once earned, any of them can be worn as a 칭호 next to your name in 명예의 전당. `goal` shows progress.
+// ── 조합 ──
+// Certain items held TOGETHER switch on a hidden combo (repeat an id for "×N" of one item); selling any part switches
+// it off. The first time a combo switches on it is written into the 조합 도감 for good. Combos stay smaller than sets.
+// The effects themselves are read in game.js wherever R.S.cmb.has(id) appears.
+const COMBOS = [
+  { id: 'hwacha', name: '화차 일제사격', items: ['hwacha', 'singijeon'], type: 'cannon', eff: '화포 폭발 범위 +25% · 화차와 신기전이 한 발 더', lore: '문종 때 만든 화차는 신기전 백 발을 한꺼번에 쏘아 올렸다고 합니다.', hint: '수레 위에서 불화살이 하늘을 덮는다' },
+  { id: 'aegisal', name: '애기살 쌍궁', items: ['gakgung', 'pyeonjeon'], type: 'arrow', eff: '궁시 관통 +1', lore: '편전(애기살)은 통아에 넣어 쏘는 짧은 화살로, 각궁과 짝을 이룹니다.', hint: '짧은 화살에는 뿔활이 제격' },
+  { id: 'bido3', name: '비도 삼연', items: ['bido', 'bido', 'bido'], type: 'blade', eff: '비도가 한 번에 세 자루씩 날아감', lore: '같은 날을 셋 겹치면 손이 셋인 듯 빨라집니다.', hint: '같은 칼을 셋 모아라' },
+  { id: 'eumyang', name: '음양 상극', items: ['hwabu', 'bingbu'], type: 'charm', eff: '불타면서 느려진 적이 받는 피해 +30%', lore: '불은 얼음을 녹이고 얼음은 불을 끕니다. 둘이 한 몸에 닿으면 버티지 못합니다.', hint: '불과 얼음이 한 부적에서 만나면' },
+  { id: 'yugeuijeon', name: '육의전', items: ['jangteo', 'sangdan', 'daesang'], type: 'eco', eff: '장터 새로고침 비용 -30%', lore: '한양 종로의 큰 시전 여섯 곳. 장사꾼이 모이면 값이 내려갑니다.', hint: '장터, 보부상, 개성의 장사꾼' },
+  { id: 'sanseong', name: '산성 축조', items: ['wall1', 'wall2', 'wall3'], type: 'surv', eff: '받는 피해 -10% · 최대 체력 +10%', lore: '돌을 쌓고 또 쌓아 무너지지 않는 산성이 됩니다.', hint: '성벽을 세 겹으로' },
+  { id: 'gasi', name: '가시 울타리', items: ['tangja', 'eomnamu'], type: 'thorn', eff: '가시 반사 피해가 둘레의 적에게도 50%', lore: '탱자와 엄나무 가지는 예부터 잡귀를 막는 울타리로 썼습니다.', hint: '잡귀를 막는 두 가지 나무' },
+  { id: 'samdok', name: '삼독', items: ['dokhwasal', 'dokbu', 'dokgasi'], type: 'poison', eff: '독 최대 중첩 +6', lore: '화살, 부적, 가시에 모두 독을 바르면 해독할 틈이 없습니다.', hint: '화살과 부적과 가시, 모두 독으로' },
+  { id: 'noegong', name: '뇌공 강림', items: ['noebu', 'noegung', 'noesin'], type: 'bolt', eff: '번개가 튈 때 10% 확률로 작은 천벌 벼락', lore: '뇌공은 벼락을 다스리는 신입니다. 세 가지 번개가 모이면 그가 내려옵니다.', hint: '부적, 활, 검. 모두 벼락을 품었다' },
+  { id: 'baekbo', name: '백보천양', items: ['range1', 'range2', 'singung'], type: 'arrow', eff: '신궁 사거리 +30% · 치명타 +10%', lore: '백 걸음 밖 버들잎을 맞힌다는 명궁의 고사입니다.', hint: '매의 눈으로 천 리를 본 명궁' },
+  { id: 'dokkaebi', name: '도깨비 잔치', items: ['bangmangi', 'dokkaebibul', 'dungap'], type: 'chaos', eff: '처치할 때 3% 확률로 엽전 주머니 (금 나와라 뚝딱)', lore: '방망이를 두드리면 금이 나온다는 그 도깨비 이야기입니다.', hint: '방망이, 불, 둔갑. 도깨비 셋이 모이면' },
+  { id: 'chilseong', name: '칠성 태극진', items: ['chilseong', 'taegeuk'], type: 'blade', eff: '칠성검이 튕길 때마다 피해가 줄지 않고 10%씩 늘어남', lore: '북두칠성과 태극이 한 진을 이룹니다.', hint: '일곱 별과 음양이 만나는 진' },
+  { id: 'yongseung', name: '용의 승천', items: ['yeouiju', 'cheondung'], type: 'chaos', eff: '최종 결전 보스(흑룡 등)에게 주는 피해 +25%', lore: '여의주를 문 용만이 하늘로 오릅니다. 그 힘으로 흑룡을 누릅니다.', hint: '구슬과 천둥, 하늘로 오르는 것' },
+  { id: 'podo', name: '포도청 대포진', items: ['hongi', 'cheonja'], type: 'cannon', eff: '석갑에게 주는 화포 피해 3배 (원래 2배)', lore: '가장 큰 두 대포를 나란히 걸면 바위도 가루가 됩니다.', hint: '가장 무거운 대포 둘' },
+  { id: 'geoul', name: '거울 속 요괴', items: ['geoul', 'dungap'], type: 'chaos', eff: '요술 최소 배율 1.0 (운이 나빠도 손해 없음)', lore: '거울에 비친 요괴는 제 모습을 바꾸지 못합니다.', hint: '비추는 것과 모습을 바꾸는 것' },
+  { id: 'jeoseung', name: '저승사자 행차', items: ['jeoseung', 'obang'], type: 'charm', eff: '부적에 맞은 체력 15% 이하 적은 바로 쓰러짐 (보스 제외)', lore: '오방 신장이 길을 열면 저승사자가 데려갑니다.', hint: '다섯 방위의 신장과 저승' },
+  { id: 'bullo', name: '불로장생', items: ['regen1', 'regen2', 'regen3'], type: 'surv', eff: '체력 재생 2배', lore: '약수, 산삼, 불로초. 진시황도 찾던 것들입니다.', hint: '물과 뿌리와 풀, 늙지 않는 세 가지' },
+  { id: 'jincheon', name: '진천뢰 연발', items: ['jincheonroe', 'jincheonroe', 'jincheonroe'], type: 'cannon', eff: '비격진천뢰가 터진 자리에서 작은 폭발 두 번 더', lore: '임진왜란 때 성을 지킨 시한폭탄, 비격진천뢰입니다.', hint: '같은 폭탄을 셋 모아라' },
+  { id: 'yeonno', name: '연노진', items: ['soenoe', 'sunogi'], type: 'arrow', eff: '수노기가 한 발 더 · 쇠뇌 장전 20% 빠름', lore: '큰 쇠뇌와 연달아 쏘는 수노기를 한 진에 세우면 화살이 끊이지 않습니다.', hint: '방아쇠 달린 활 둘' },
+  { id: 'gyeoljin', name: '결계진', items: ['gyeolgye', 'nakinbu'], type: 'charm', eff: '결계 지대에 선 적에게 낙인 (받는 피해 +25%)', lore: '결계로 가두고 낙인을 찍으면 달아날 곳이 없습니다.', hint: '가두는 부적과 찍는 부적' },
+  { id: 'segun', name: '세곡 운송', items: ['segok', 'jangteo'], type: 'eco', eff: '세곡선 수입 +50%', lore: '조운선이 실어 온 세곡은 장터를 거쳐 한양을 먹여 살렸습니다.', hint: '배와 장터' },
+  { id: 'jilryeo', name: '질려 진지', items: ['jillyeo', 'mareumsoe'], type: 'thorn', eff: '질려포통 지대가 30% 넓고 1초 더 남음', lore: '마름쇠를 뿌린 땅에 질려포통까지 터지면 발 디딜 곳이 없습니다.', hint: '쇠 가시를 흩뿌리는 두 가지' },
+];
+const COMBO = Object.fromEntries(COMBOS.map(c => [c.id, c]));
+const COMBO_OF = {}; // item id → combos it belongs to
+for (const c of COMBOS) for (const id of new Set(c.items)) (COMBO_OF[id] = COMBO_OF[id] || []).push(c.id);
+
 const ACHS = [
   { id: 'first', g: '진행', name: '첫 출정', title: '신참 봉수군', desc: '첫 판을 마칩니다' },
   { id: 'w_easy', g: '진행', name: '첫 봉화', title: '봉수군', desc: '쉬움에서 이깁니다' },
@@ -353,6 +385,9 @@ const ACHS = [
   { id: 'route1', g: '봉수로', name: '첫 봉수로', title: '봉수로 순찰사', desc: '봉수로 하나를 한양까지 잇습니다' },
   { id: 'route5', g: '봉수로', name: '다섯 봉수로', title: '팔도 순찰사', desc: '다섯 봉수로를 모두 잇습니다', goal: p => [ROUTES.filter(rt => routeDone(rt, p)).length, ROUTES.length] },
   { id: 'capital', g: '봉수로', name: '목멱산 봉화', title: '도성 봉수대장', desc: '목멱산에서 흑룡을 쓰러뜨립니다' },
+  { id: 'combo1', g: '조합', name: '첫 비법', title: '호기심 많은 봉수군', desc: '조합 하나를 처음 켭니다', goal: p => [Object.keys(p.combos).length, 1] },
+  { id: 'combo6', g: '조합', name: '비법 여섯', title: '비법가', desc: '서로 다른 조합 6개를 찾습니다', goal: p => [Object.keys(p.combos).length, 6] },
+  { id: 'comboall', g: '조합', name: '조합 도감 완성', title: '대장장이', desc: `조합 ${COMBOS.length}개를 모두 찾습니다`, goal: p => [Object.keys(p.combos).length, COMBOS.length] },
 ];
 const ACH = Object.fromEntries(ACHS.map(a => [a.id, a]));
 // 도전 achievements count only in 40-round runs on 보통 or harder (주간 랭킹전 included).
@@ -387,10 +422,11 @@ const giftTier = r => Math.min(3, 1 + Math.floor(r / 15));
 
 // 봉수 소식: newest first. A new `id` lights the NEW mark on the title screen until the player opens it.
 const NEWS = [
-  { id: '2026-10-18a', date: '10월 18일', title: '대규모 패치: 봉수로 지도 · 업적과 칭호 · 새 무기와 적', items: [
+  { id: '2026-10-18a', date: '10월 18일', title: '대규모 패치: 봉수로 지도 · 조합 도감 · 업적과 칭호 · 새 무기와 적', items: [
     '<b>봉수로 지도</b>가 열렸습니다. 조선의 다섯 봉수로(동래길 · 남해길 · 관북길 · 강계길 · 의주길) 25구간을 하나씩 이어 한양 목멱산까지 봉화를 올리는 모드입니다. 구간마다 라운드 수와 규칙(안개, 큰 장, 혹한, 돌격 등)이 다르고, 처음 봉화를 올리면 기억 조각을 더 받습니다.',
     '다섯 길을 모두 이으면 마지막 봉화 <b>목멱산</b>이 열립니다. 관북길은 눈 덮인 전장에서 싸웁니다.',
-    '<b>업적 33개와 칭호</b>가 생겼습니다. 업적을 이루면 칭호를 얻고, 하나를 골라 달면 명예의 전당에서 이름 옆에 보입니다. 이미 이룬 승리 · 판수 · 수호 기억은 바로 인정되고, 처치 수 같은 누적 기록은 오늘부터 셉니다.',
+    '<b>조합 도감</b>이 생겼습니다. 특정 물건을 함께 봇짐에 넣으면 숨은 조합 22가지가 켜집니다(예: 화차 + 신기전, 비도 ×3). 처음 켜면 도감에 남고 기억 조각 +3을 받습니다. 장터에서 매듭 표시가 붙은 물건이 재료이고, 무엇과 짝인지는 도감의 단서로 찾아보세요.',
+    '<b>업적 36개와 칭호</b>가 생겼습니다. 업적을 이루면 칭호를 얻고, 하나를 골라 달면 명예의 전당에서 이름 옆에 보입니다. 이미 이룬 승리 · 판수 · 수호 기억은 바로 인정되고, 처치 수 같은 누적 기록은 오늘부터 셉니다.',
     '<b>새 물건 13가지</b>: 월도, 쇠뇌, 수노기, 낙인부, 결계부, 질려포통, 파진포, 요괴 호리병, 삼족오, 토벌 비책, 세곡선, 봉수 신호, 마름쇠. 도감에서 자세히 볼 수 있습니다.',
     '<b>새 적</b>: 창귀(6라운드부터 셋씩 무리 지어 옴), 그슨대(12라운드부터, 쓰러지면 그림자 둘로 갈라짐).',
     '<b>악몽 I 조정</b>: 10라운드 두억시니에서 너무 많이 막혀서 조금 쉽게 했습니다. 적 체력 ×1.8 → ×1.65, 적 수 ×1.2 → ×1.15, 보스 체력 ×2.0 → ×1.65, 적 공격 ×1.3 → ×1.25. 악몽 II부터는 그대로입니다.',

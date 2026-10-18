@@ -18,7 +18,7 @@ const stackCapped = id => ITEM[id].cat !== 'weapon' && owned(id) >= STACK_MAX;
 // ───────────────────────── profile (persistent) ─────────────────────────
 const SAVE_KEY = 'bonghwa-v1';
 function newProfile() { return { v: 1, shards: 0, perks: {}, wins: {}, best: {}, runs: 0, playSec: 0, netherAt: 0, tutorial: false, seen: [], sound: true, music: true, nick: '', ranked: { day: '', used: 0 }, records: [],
-  map: {}, ach: {}, title: '', stats: { kills: 0, bosses: 0, treasures: 0 }, owner: '', savedAt: 0 }; }
+  map: {}, ach: {}, title: '', stats: { kills: 0, bosses: 0, treasures: 0 }, combos: {}, had: [], owner: '', savedAt: 0 }; }
 const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 const cleanNick = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12);
 function cleanRec(id, d) {
@@ -38,6 +38,8 @@ function sanitizeProfile(o) {
   if (o.ach && typeof o.ach === 'object') for (const a of ACHS) if (o.ach[a.id]) p.ach[a.id] = num(o.ach[a.id], 1) || 1;
   p.title = ACH[o.title] && p.ach[o.title] ? o.title : '';
   if (o.stats && typeof o.stats === 'object') for (const k of ['kills', 'bosses', 'treasures']) p.stats[k] = Math.max(0, Math.floor(num(o.stats[k])));
+  if (o.combos && typeof o.combos === 'object') for (const c of COMBOS) if (o.combos[c.id]) p.combos[c.id] = num(o.combos[c.id], 1) || 1;
+  if (Array.isArray(o.had)) p.had = [...new Set(o.had.filter(id => typeof id === 'string' && ITEM[id]))];
   p.owner = typeof o.owner === 'string' ? o.owner.slice(0, 64) : ''; // the account this copy belongs to ('' = guest)
   p.savedAt = num(o.savedAt);
   return p;
@@ -295,18 +297,35 @@ function computeStats() {
     }
     if (first) for (const e of [d.elem, d.elem2]) if (e) s.elemCount[e] = (s.elemCount[e] || 0) + 1;
   }
+  // 조합: switched on while every part is in the bag (a part listed ×N needs N copies)
+  const have = {}; for (const it of R.items) have[it.id] = (have[it.id] || 0) + 1;
+  s.cmb = new Set(COMBOS.filter(c => c.items.every(id => have[id] >= c.items.filter(x => x === id).length)).map(c => c.id));
+  if (s.cmb.has('sanseong')) { s.dr += 0.1; s.maxHp = Math.round(s.maxHp * 1.1); }
+  if (s.cmb.has('bullo')) s.regen *= 2;
   s.dr = Math.min(0.6, s.dr); s.thornSlow = Math.min(0.7, s.thornSlow);
   for (const t of TYPE_IDS) { const n = s.typeCount[t] || 0, step = setSteps(t).filter(x => n >= x).length; s.typeStep[t] = step; if (step) s.typeDmg[t] += TYPE_SET_DMG[step - 1]; }
   for (const e of ELEM_IDS) { const n = s.elemCount[e] || 0; s.elemStep[e] = ELEM_SET_STEPS.filter(x => n >= x).length; }
-  s.chaosMin = s.typeStep.chaos >= 2 ? 0.9 : 0.5;
+  s.chaosMin = s.cmb.has('geoul') ? 1 : s.typeStep.chaos >= 2 ? 0.9 : 0.5;
   if (R.track) { if (TYPE_IDS.some(t => s.typeStep[t] >= setSteps(t).length)) R.track.set3 = true; if (ELEM_IDS.filter(e => s.elemStep[e] >= 2).length >= 2) R.track.elem2 = true; }
   return s;
 }
 function refreshStats() {
-  const before = R.S, S = computeStats(); R.S = S; celebrateSets(before, S);
+  const before = R.S, S = computeStats(); R.S = S; celebrateSets(before, S); noteCombos(before, S);
   if (before) { if (S.maxHp > before.maxHp) R.hp += S.maxHp - before.maxHp; if (S.shield > before.shield) R.shieldNow += S.shield - before.shield; }
   R.hp = Math.min(R.hp, S.maxHp); R.shieldNow = Math.min(R.shieldNow, S.shield);
   R.weapons = R.items.filter(i => ITEM[i.id].cat === 'weapon');
+}
+// A combo switching on: the first time ever it is written into the 조합 도감 (+3 기억 조각) with a brush banner.
+function noteCombos(before, S) {
+  for (const id of S.cmb) {
+    if (before && before.cmb && before.cmb.has(id)) continue;
+    const c = COMBO[id];
+    if (P.combos[id]) { toast(`조합 「${c.name}」 · ${c.eff}`); continue; }
+    P.combos[id] = Date.now(); P.shards += 3;
+    banner('새 조합 발견', `${c.name} · 기억 조각 +3`, 'gold', '발견'); toast(`${c.name}: ${c.eff}`); Sfx.play('gift');
+    for (const a of checkAch()) setTimeout(() => toast(`업적 「${ACH[a].name}」 · 칭호 「${ACH[a].title}」`), 2400);
+    persist();
+  }
 }
 
 // ───────────────────────── rounds & spawns ─────────────────────────
@@ -314,7 +333,7 @@ function startRound(r) {
   R.round = r; R.t = R.roundTime; R.elapsed = 0;
   const paid = [];
   if (r > 1 && R.S.interest > 0) { const gain = Math.min(R.S.interestCap, Math.floor(R.gold * R.S.interest)); if (gain > 0) { R.gold += gain; paid.push(`이자 +${fmt(gain)}냥`); } }
-  if (R.S.roundGold > 0) { const gain = Math.round(R.S.roundGold + R.S.roundGoldPer * r); R.gold += gain; paid.push(`세곡선 +${fmt(gain)}냥`); }
+  if (R.S.roundGold > 0) { const gain = Math.round((R.S.roundGold + R.S.roundGoldPer * r) * (R.S.cmb.has('segun') ? 1.5 : 1)); R.gold += gain; paid.push(`세곡선 +${fmt(gain)}냥`); }
   if (paid.length) toast(paid.join(' · '));
   R.shieldNow = R.S.shield; R.freeRerolls = R.S.freeRerolls; R.paidRerolls = 0; R.rerollIdx = 0; rollShop();
   R.spawnQ = genSpawns(r);
@@ -383,7 +402,7 @@ function rollShop() {
   }
 }
 const priceOf = id => TIERS[ITEM[id].tier].price;
-function rerollCost() { return Math.round((15 + Math.max(1, R.round) * 4) * (1 + 0.5 * R.paidRerolls)); }
+function rerollCost() { return Math.round((15 + Math.max(1, R.round) * 4) * (1 + 0.5 * R.paidRerolls) * (R.S && R.S.cmb.has('yugeuijeon') ? 0.7 : 1)); }
 function buy(slot) {
   if (!R || R.state !== 'run' || R.gift) return;
   const s = R.shop[slot]; if (!s || s.sold) return;
@@ -414,6 +433,7 @@ function addItem(id) {
   const it = { uid: ++uidSeq, id, t: Math.random() * 0.3, dealt: 0, since: R.time };
   R.items.push(it); refreshStats();
   if (ITEM[id].cat === 'eco') R.track.eco = true; if (ITEM[id].cat === 'weapon') R.track.types.add(ITEM[id].type);
+  if (!P.had.includes(id)) P.had.push(id);
   if (ITEM[id].smites) { R.smites += ITEM[id].smites; renderHud(true); } // 봉수 신호
 }
 function sellItem(uid) {
@@ -445,9 +465,10 @@ function calcDmg(def, e) {
   const S = R.S, t = def.type, bt = e.boss && BOSS_TRAITS[R.diff.trait]; let d = def.dmg * (1 + S.dmg + S.typeDmg[t]), strong = false;
   if (bt) { if (bt.half === t) d *= 0.5; if (e.resistT > 0 && e.resist === t) d *= 0.3; }
   if (e.boss) d *= 1 + (def.bossDmg || 0) + S.bossDmg;
+  if (e.stageFinal && S.cmb.has('yongseung')) d *= 1.25;
   if (t === 'chaos') d *= bt && R.diff.trait === 'break' ? 0.5 + Math.random() * 0.5 : S.chaosMin + Math.random() * (2 - S.chaosMin);
-  else if (TYPES[t].strong === e.armor) { d *= 2; strong = true; }
-  const critChance = S.crit + (def.crit || 0) + (t === 'arrow' && S.typeStep.arrow >= 2 ? 0.08 : 0), crit = Math.random() < critChance;
+  else if (TYPES[t].strong === e.armor) { d *= t === 'cannon' && S.cmb.has('podo') ? 3 : 2; strong = true; }
+  const critChance = S.crit + (def.crit || 0) + (t === 'arrow' && S.typeStep.arrow >= 2 ? 0.08 : 0) + (def.id === 'singung' && S.cmb.has('baekbo') ? 0.1 : 0), crit = Math.random() < critChance;
   if (crit) d *= S.critMul;
   return { d, crit, strong };
 }
@@ -455,9 +476,10 @@ function updateWeapons(dt) {
   const S = R.S, as = 1 + S.aspd;
   for (const w of R.weapons) {
     w.t -= dt * as; if (w.t > 0) continue;
-    const def = ITEM[w.id], range = def.range * (1 + S.range), tg = nearest(range);
+    const def = ITEM[w.id], range = def.range * (1 + S.range + (w.id === 'singung' && S.cmb.has('baekbo') ? 0.3 : 0)), tg = nearest(range);
     if (!tg) { w.t = 0.05; continue; }
-    fire(w, def, tg, range); w.t = Math.max(w.t + def.cd, def.cd * 0.25);
+    const cd = def.cd * (w.id === 'soenoe' && S.cmb.has('yeonno') ? 0.8 : 1);
+    fire(w, def, tg, range); w.t = Math.max(w.t + cd, cd * 0.25);
   }
 }
 const TOP = { x: CX, y: CY - 36 };
@@ -469,11 +491,12 @@ function fire(w, def, tg, range) {
   }
   else if (def.multi) { for (const t of nearestN(range, def.multi + (S.typeStep.charm >= 2 ? 1 : 0))) shot(w, def, t, 0); }
   else {
-    const n = def.shots || 1, pool = n > 1 ? nearestN(range, 6) : null;
+    const n = w.id === 'bido' && S.cmb.has('bido3') ? 3 : (def.shots || 1) + ((w.id === 'hwacha' || w.id === 'singijeon') && S.cmb.has('hwacha') || w.id === 'sunogi' && S.cmb.has('yeonno') ? 1 : 0), pool = n > 1 ? nearestN(range, 6) : null;
     for (let i = 0; i < n; i++) shot(w, def, i === 0 ? tg : pool[(Math.random() * pool.length) | 0], i * 0.07);
   }
   Sfx.play(def.type, def.type === 'blade' ? 70 : 90);
 }
+const splashOf = def => def.splash * (R.S.typeStep.cannon >= 2 ? 1.3 : 1) * (R.S.cmb.has('hwacha') ? 1.25 : 1);
 function shot(w, def, tg, delay) {
   const S = R.S, s = { w, def, tg, x: TOP.x, y: TOP.y, delay, mult: 1, hit: new Set(), tx: tg.x, ty: tg.y };
   switch (def.proj) {
@@ -481,15 +504,15 @@ function shot(w, def, tg, delay) {
       const lead = tg.freezeT > 0 || tg.stunT > 0 ? 0 : 0.5;
       const ang = Math.atan2(CY - tg.y, CX - tg.x), stopped = distC(tg) <= TOWER_R + tg.r + 1;
       const tx = stopped ? tg.x : tg.x + Math.cos(ang) * tg.spd * lead, ty = stopped ? tg.y : tg.y + Math.sin(ang) * tg.spd * lead;
-      Object.assign(s, { k: 'shell', x0: TOP.x, y0: TOP.y, tx, ty, tt: 0, T: 0.45 + Math.hypot(tx - TOP.x, ty - TOP.y) / 420, splash: def.splash * (S.typeStep.cannon >= 2 ? 1.3 : 1) });
+      Object.assign(s, { k: 'shell', x0: TOP.x, y0: TOP.y, tx, ty, tt: 0, T: 0.45 + Math.hypot(tx - TOP.x, ty - TOP.y) / 420, splash: splashOf(def) });
       break;
     }
     case 'rocket': {
       const a = Math.atan2(tg.y - TOP.y, tg.x - TOP.x) + rand(-1.4, 1.4);
-      Object.assign(s, { k: 'rocket', vx: Math.cos(a) * 90, vy: Math.sin(a) * 90, age: 0, splash: def.splash * (S.typeStep.cannon >= 2 ? 1.3 : 1) });
+      Object.assign(s, { k: 'rocket', vx: Math.cos(a) * 90, vy: Math.sin(a) * 90, age: 0, splash: splashOf(def) });
       break;
     }
-    case 'arrow': Object.assign(s, { k: 'arrow', spd: 320, pierce: (def.pierce || 0) + (S.typeStep.arrow >= 2 ? 1 : 0) }); break;
+    case 'arrow': Object.assign(s, { k: 'arrow', spd: 320, pierce: (def.pierce || 0) + (S.typeStep.arrow >= 2 ? 1 : 0) + (S.cmb.has('aegisal') ? 1 : 0) }); break;
     case 'blade': Object.assign(s, { k: 'blade', spd: 230, bounce: (def.bounce || 0) + (S.typeStep.blade >= 2 ? 1 : 0), spin: 0 }); break;
     case 'charm': Object.assign(s, { k: 'charm', spd: 175 }); break;
     default: Object.assign(s, { k: 'wisp', spd: 185 }); break;
@@ -525,7 +548,7 @@ function stepShot(s, dt) {
   if (d <= step + 3) {
     if (!tg) return false;
     s.hit.add(tg); hitWith(s.w, s.def, tg, s.mult);
-    if (s.k === 'blade' && s.bounce > 0) { const nx = nearOf(tg, 60, s.hit); if (nx) { s.bounce--; s.tg = nx; s.mult *= 0.85; s.x = tg.x; s.y = tg.y - 4; return true; } }
+    if (s.k === 'blade' && s.bounce > 0) { const nx = nearOf(tg, 60, s.hit); if (nx) { s.bounce--; s.tg = nx; s.mult *= s.w.id === 'chilseong' && R.S.cmb.has('chilseong') ? 1.1 : 0.85; s.x = tg.x; s.y = tg.y - 4; return true; } }
     if (s.k === 'arrow' && s.pierce > 0) { s.straight = true; s.pierce--; const a = s.ang; s.vx = Math.cos(a) * s.spd; s.vy = Math.sin(a) * s.spd; s.left = 140; s.mult *= 0.9; return true; }
     return false;
   }
@@ -537,12 +560,17 @@ function boom(w, def, x, y, r) {
   for (const e of R.enemies) if (e.hp > 0 && Math.hypot(e.x - x, e.y - 4 - y) <= r + e.r) hitWith(w, def, e, 1, true);
   if (def.field) addField(w, def, x, y);
   R.fx.push({ k: 'boom', x, y, r, t: 0, life: 0.28, c: def.elem === 'fire' ? '#ff8a3a' : '#f3c94a' });
+  if (def.id === 'jincheonroe' && R.S.cmb.has('jincheon')) for (const [ox, oy] of [[-10, 5], [10, -5]]) { // 진천뢰 연발: two small after-blasts
+    for (const e of R.enemies) if (e.hp > 0 && Math.hypot(e.x - x - ox, e.y - 4 - y - oy) <= r * 0.6 + e.r) hitWith(w, def, e, 0.5, true);
+    R.fx.push({ k: 'boom', x: x + ox, y: y + oy, r: r * 0.6, t: 0, life: 0.24, c: '#f3c94a' });
+  }
   if (def.proj === 'shell') R.shake = Math.min(3, R.shake + 0.6);
 }
 function hitWith(w, def, e, mult = 1, aoe = false) {
   const res = calcDmg(def, e); let d = res.d * mult;
   damage(e, d, w, res.crit, res.strong);
-  if (e.hp > 0 && def.execute && !e.boss && e.hp / e.max < def.execute) { damage(e, e.hp, w, false, false); R.fx.push({ k: 'ring', x: e.x, y: e.y - 5, r: 10, t: 0, life: 0.3, c: '#c9ced8' }); }
+  const exec = Math.max(def.execute || 0, def.type === 'charm' && R.S.cmb.has('jeoseung') ? 0.15 : 0);
+  if (e.hp > 0 && exec && !e.boss && e.hp / e.max < exec) { damage(e, e.hp, w, false, false); R.fx.push({ k: 'ring', x: e.x, y: e.y - 5, r: 10, t: 0, life: 0.3, c: '#c9ced8' }); }
   const el = def.randElem ? ELEM_IDS[(Math.random() * 4) | 0] : def.elem;
   if (el) applyElem(e, el, d, w); if (def.elem2) applyElem(e, def.elem2, d, w);
   let chains = (def.chain || 0) + (el === 'bolt' ? 1 + R.S.elemStep.bolt : 0);
@@ -558,6 +586,10 @@ function chain(e0, def, base, n, w) {
   for (let i = 0; i < n; i++) {
     const nx = nearOf(cur, 48, seen); if (!nx) break; seen.add(nx); pts.push([nx.x, nx.y - 5]);
     const strong = def.type !== 'chaos' && TYPES[def.type].strong === nx.armor; damage(nx, base * (strong ? 2 : 1), w, false, strong); cur = nx;
+    if (R.S.cmb.has('noegong') && nx.hp > 0 && Math.random() < 0.1) { // 뇌공 강림: a small bolt from the sky
+      damage(nx, base * 3, w, false, false); nx.stunT = Math.max(nx.stunT, nx.boss ? 0.15 : 0.5);
+      R.fx.push({ k: 'bolt', pts: [[nx.x + rand(-8, 8), -4], [nx.x + rand(-4, 4), nx.y * 0.5], [nx.x, nx.y - 6]], t: 0, life: 0.3, c: '#fff2a8' });
+    }
   }
   if (pts.length > 1) R.fx.push({ k: 'bolt', pts, t: 0, life: 0.18, c: def.elem === 'bolt' || def.type === 'charm' ? '#ffe46b' : '#ff9ad0' });
 }
@@ -569,7 +601,7 @@ function applyElem(e, el, d, w) {
     e.slowT = 2 * (1 + S.elemPow.frost); e.slowF = Math.max(e.slowF, 0.3 + [0, 0.1, 0.2][st]);
     if (st >= 2 && Math.random() < 0.12) e.freezeT = Math.max(e.freezeT, e.boss ? 0.3 : 1);
   } else if (el === 'poison') {
-    const cap = [8, 12, 16][st] * (tr === 'break' ? 0.5 : 1); e.pStacks = Math.min(cap, e.pStacks + 1);
+    const cap = ([8, 12, 16][st] + (S.cmb.has('samdok') ? 6 : 0)) * (tr === 'break' ? 0.5 : 1); e.pStacks = Math.min(cap, e.pStacks + 1);
     const dps = d * 0.07 * (1 + S.elemPow.poison) * (st >= 2 ? 1.4 : 1); if (dps >= e.pDps) { e.pDps = dps; e.pSrc = w; } e.poisonT = 4;
   }
 }
@@ -577,7 +609,8 @@ function applyElem(e, el, d, w) {
 function addField(w, def, x, y) {
   if (R.fields.length >= 40) R.fields.shift();
   const S = R.S, f = def.field;
-  R.fields.push({ w, x, y, r: f.r * (def.type === 'cannon' && S.typeStep.cannon >= 2 ? 1.3 : 1), t: f.t, T: f.t, dps: def.dmg * f.dps * (1 + S.dmg + S.typeDmg[def.type]), slow: f.slow, c: f.c, tick: 0 });
+  const jil = def.id === 'jillyeo' && S.cmb.has('jilryeo'), ft = f.t + (jil ? 1 : 0);
+  R.fields.push({ w, x, y, r: f.r * (def.type === 'cannon' && S.typeStep.cannon >= 2 ? 1.3 : 1) * (jil ? 1.3 : 1), t: ft, T: ft, dps: def.dmg * f.dps * (1 + S.dmg + S.typeDmg[def.type]), slow: f.slow, c: f.c, tick: 0 });
 }
 function stepFields(dt) {
   let n = 0;
@@ -587,6 +620,7 @@ function stepFields(dt) {
     for (const e of R.enemies) {
       if (e.hp <= 0 || e.d.treasure || Math.hypot(e.x - f.x, e.y - 4 - f.y) > f.r + e.r) continue;
       e.slowT = Math.max(e.slowT, 0.3); e.slowF = Math.max(e.slowF, f.slow * (e.boss ? 0.5 : 1));
+      if (f.w && f.w.id === 'gyeolgye' && R.S.cmb.has('gyeoljin')) e.markT = Math.max(e.markT, 0.6); // 결계진
       if (hit) damage(e, f.dps * 0.5, f.w, false, false, Math.random() < 0.6);
     }
     if (f.t > 0) R.fields[n++] = f;
@@ -596,6 +630,7 @@ function stepFields(dt) {
 function damage(e, d, w, crit, strong, silent) {
   if (e.hp <= 0 || d <= 0) return;
   if (e.markT > 0 && w) d *= 1.25; // 낙인부
+  if (w && e.burnT > 0 && e.slowT > 0 && R.S.cmb.has('eumyang')) d *= 1.3; // 음양 상극
   e.hp -= d; e.flash = 0.06;
   if (!silent && R.fx.length < 380 && (crit || Math.random() < 0.35)) R.fx.push({ k: 'hit', x: e.x + rand(-2, 2), y: e.y - e.r - rand(0, e.r), t: 0, life: 0.12 });
   if (w) w.dealt += d; else R.thornDealt += d;
@@ -624,6 +659,7 @@ function kill(e, w) {
   if (DECALS.length < 70) DECALS.push({ x: e.x, y: e.y, k: (Math.random() * INK.length) | 0, t: 0, life: e.boss ? 12 : 4 });
   R.kills++;
   if (w && ITEM[w.id].lifeOnKill) R.hp = Math.min(R.S.maxHp, R.hp + ITEM[w.id].lifeOnKill);
+  if (S.cmb.has('dokkaebi') && !e.d.treasure && Math.random() < 0.03) { const c = Math.round(giftCoins(Math.min(R.round, R.rounds)) * 0.12); R.gold += c; R.nums.push({ x: e.x, y: e.y - 16, v: c, c: '#f3c94a', s: 1, t: 0, plus: true }); } // 도깨비 잔치
   if (e.d.split && !e.ghost) for (let i = 0; i < 2; i++) { const o = spawnFoe(e.d.split, 0, 0, { x: e.x + (i ? 6 : -6), y: e.y + rand(-3, 3) }); o.flash = 0.12; } // 그슨대 → 그림자 둘
   for (let i = 0; i < (e.boss ? 30 : 6); i++) R.fx.push({ k: 'p', x: e.x + rand(-e.r, e.r), y: e.y - rand(0, e.r * 2), vx: rand(-34, 34), vy: rand(-46, -4), t: 0, life: rand(0.3, 0.7), c: i % 3 === 0 ? '#fff2d0' : i % 3 === 1 ? '#3a2a3a' : '#8a7a8a' });
   if (e.burnT > 0 && S.elemStep.fire >= 2) { for (const o of R.enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 22) { o.burnT = 3; o.burnDps = Math.max(o.burnDps, e.burnDps * 0.8); o.burnSrc = e.burnSrc; } R.fx.push({ k: 'boom', x: e.x, y: e.y - 4, r: 18, t: 0, life: 0.25, c: '#ff8a3a' }); }
@@ -658,6 +694,7 @@ function hurtTower(d, e) {
     const t = S.thorn * (1 + S.thornPow) * (1 + 0.1 * (Math.min(R.round, R.rounds) - 1));
     damage(e, t, null, false, false);
     for (const el of S.thornElems) applyElem(e, el, t, null);
+    if (S.cmb.has('gasi')) for (const o of R.enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 30) damage(o, t * 0.5, null, false, false, true); // 가시 울타리
   }
   if (R.hp <= 0) { R.hp = 0; lose(); }
 }
@@ -1242,11 +1279,24 @@ function renderShop() {
     if (s.sold) { b.classList.add('sold'); b.disabled = true; b.innerHTML = `<span class="soldmark">팔림</span><span class="key">${i + 1}</span>`; box.append(b); return; }
     const d = ITEM[s.id], price = Math.round(priceOf(s.id) * (R.halfOff ? 0.5 : 1));
     b.style.setProperty('--tier', TIERS[d.tier].color);
-    b.innerHTML = `<img class="ico" alt="" src="${iconFor(d)}"><span class="nm">${d.name}</span><span class="sub"><span class="pr">${fmt(price)}냥</span><span class="tg">${itemTag(d)}</span></span>${stackCapped(s.id) ? '<span class="own">최대</span>' : owned(s.id) ? `<span class="own">×${owned(s.id)}→${owned(s.id) + 1}</span>` : ''}<span class="key">${i + 1}</span>`;
+    b.innerHTML = `<img class="ico" alt="" src="${iconFor(d)}"><span class="nm">${d.name}</span><span class="sub"><span class="pr">${fmt(price)}냥</span><span class="tg">${itemTag(d)}</span></span>${comboMark(s.id)}${stackCapped(s.id) ? '<span class="own">최대</span>' : owned(s.id) ? `<span class="own">×${owned(s.id)}→${owned(s.id) + 1}</span>` : ''}<span class="key">${i + 1}</span>`;
     b.dataset.item = s.id; box.append(b);
   });
   renderRes();
 }
+// 조합 재료 표시: a small knot on parts of any combo; "조합!" when buying this switches on one already in the 도감.
+function comboAfterBuy(id) {
+  if (!R || !COMBO_OF[id]) return null;
+  const have = {}; for (const it of R.items) have[it.id] = (have[it.id] || 0) + 1; have[id] = (have[id] || 0) + 1;
+  return COMBO_OF[id].map(c => COMBO[c]).find(c => P.combos[c.id] && !R.S.cmb.has(c.id) && c.items.every(x => have[x] >= c.items.filter(y => y === x).length)) || null;
+}
+function comboMark(id) {
+  if (!COMBO_OF[id]) return '';
+  const c = comboAfterBuy(id);
+  return c ? `<span class="knot go" title="사면 조합 「${c.name}」이 켜집니다">조합!</span>` : '<span class="knot" title="숨은 조합의 재료"></span>';
+}
+const cmbColor = t => (TYPES[t] ? TYPES[t].color : ELEMS[t] ? ELEMS[t].color : { eco: '#b8901e', surv: '#c8432a', thorn: '#8a7a62' }[t]);
+const comboNote = d => (COMBO_OF[d.id] || []).map(cid => { const c = COMBO[cid]; return P.combos[cid] ? `<p class="hint cmb">조합 「${c.name}」${R && R.S && R.S.cmb.has(cid) ? ' <b>켜짐</b>' : ''} · ${c.eff}</p>` : `<p class="hint cmb">숨은 조합의 재료 · “${c.hint}”</p>`; }).join('');
 let invFilter = 'all', selected = null;
 const INV_TABS = [['all', '전체'], ['blade', '창검'], ['arrow', '궁시'], ['charm', '부적'], ['cannon', '화포'], ['chaos', '요술'], ['thorn', '가시'], ['etc', '기타']];
 function renderInv() {
@@ -1295,7 +1345,7 @@ function itemStats(d) {
 const stackNote = d => { if (!R || d.cat === 'weapon') return ''; const n = owned(d.id); if (!n) return ''; return n >= STACK_MAX ? `<p class="hint">최대 ${STACK_MAX}개까지 · 더 살 수 없습니다</p>` : `<p class="hint">보유 ×${n} · 다음 것은 효과 ${Math.round(stackEff(n) * 100)}%</p>`; };
 function showTip(el, d, extra = '') {
   const tier = TIERS[d.tier];
-  tip.innerHTML = `<div class="t-h"><img src="${iconFor(d)}" alt=""><div><div class="t-nm" style="color:${tier.color}">${d.name}</div><div class="t-tg">${tier.name} · ${itemTag(d)}</div></div></div>${itemStats(d).map(s => `<p>${s}</p>`).join('')}<p class="t-d">${d.desc || ''}</p>${extra}`;
+  tip.innerHTML = `<div class="t-h"><img src="${iconFor(d)}" alt=""><div><div class="t-nm" style="color:${tier.color}">${d.name}</div><div class="t-tg">${tier.name} · ${itemTag(d)}</div></div></div>${itemStats(d).map(s => `<p>${s}</p>`).join('')}<p class="t-d">${d.desc || ''}</p>${comboNote(d)}${extra}`;
   tip.style.setProperty('--tt', tier.color); tip.hidden = false;
   const r = rectIn(el);
   let x = r.x, y = r.y; const tw = 330, th = tip.offsetHeight;
@@ -1323,10 +1373,13 @@ function toggleFPanel(kind) {
   el.hidden = false; if (fpanel === 'set') renderSets(); else if (fpanel === 'meter') renderMeter(); else renderMatch();
 }
 function renderSets() {
-  const S = R.S; let h = '<h3>세트 효과 <span class="dim">[B]</span></h3><p class="dim small" style="margin:0 0 8px">서로 다른 물건만 셉니다. 같은 물건을 겹쳐 사도 세트 단계는 오르지 않습니다.</p><div class="sets">';
+  const S = R.S; let h = '<h3>세트 · 조합 <span class="dim">[B]</span></h3><p class="dim small" style="margin:0 0 8px">서로 다른 물건만 셉니다. 같은 물건을 겹쳐 사도 세트 단계는 오르지 않습니다.</p><div class="sets">';
   for (const t of TYPE_IDS) { const n = S.typeCount[t] || 0, st = S.typeStep[t]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${TYPES[t].color}">${TYPES[t].set}</b> <span class="dim">서로 다른 ${TYPES[t].name} ${n}종</span><div class="steps">${setSteps(t).map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: +${pct(TYPE_SET_DMG[i])}</span>`).join('')}</div><div class="dim small">${TYPE_SET_PERK[t]}</div></div>`; }
   for (const e of ELEM_IDS) { const n = S.elemCount[e] || 0, st = S.elemStep[e]; h += `<div class="set ${st ? 'on' : ''}"><b style="color:${ELEMS[e].color}">${ELEMS[e].set}</b> <span class="dim">서로 다른 ${ELEMS[e].name} 물건 ${n}종</span><div class="steps">${ELEM_SET_STEPS.map((x, i) => `<span class="${n >= x ? 'lit' : ''}">${x}: ${ELEM_SET_TEXT[e][i]}</span>`).join('')}</div></div>`; }
-  $('#fpanel').innerHTML = h + '</div>';
+  // 켜진 조합 come first; with none on, a short note at the bottom says how combos work
+  const on = [...S.cmb].map(id => COMBO[id]);
+  const cmb = `<h3 class="cmb-h">조합 <span class="dim small">찾은 조합 ${Object.keys(P.combos).length} / ${COMBOS.length}</span></h3><div class="sets">${on.length ? on.map(c => `<div class="set on"><b style="color:${cmbColor(c.type)}">${c.name}</b> <span class="dim">${c.items.map(id => ITEM[id].name).join(' + ')}</span><div class="dim small">${c.eff}</div></div>`).join('') : '<p class="dim small">켜진 조합이 없습니다. 특정 물건을 함께 가지면 숨은 조합이 켜집니다. 매듭 표시가 붙은 물건이 재료입니다.</p>'}</div>`;
+  $('#fpanel').innerHTML = on.length ? h.replace('<p class="dim small" style="margin:0 0 8px">', cmb + '<h3 class="cmb-h">세트</h3><p class="dim small" style="margin:0 0 8px">') + '</div>' : h + '</div>' + cmb;
 }
 function renderMeter() {
   const byId = new Map();
@@ -1490,7 +1543,7 @@ let lastRecAt = 0;
 // every item, how the shop rolls, what each round sends, and how sets count.
 let codexTab = 'items', codexFilter = 'all';
 const TIER_INK = ['#5d5a55', '#2f7a35', '#2d5fb0', '#b8601a'];
-const CODEX_TABS = [['items', '물건'], ['shop', '상점 확률'], ['rounds', '라운드와 적'], ['sets', '세트']];
+const CODEX_TABS = [['items', '물건'], ['combo', '조합'], ['shop', '상점 확률'], ['rounds', '라운드와 적'], ['sets', '세트']];
 const CODEX_FILTERS = [['all', '전체'], ['blade', '창검'], ['arrow', '궁시'], ['charm', '부적'], ['cannon', '화포'], ['chaos', '요술'], ['upg', '강화'], ['eco', '경제'], ['surv', '생존'], ['thorn', '가시']];
 const pctTxt = v => (v >= 10 ? Math.round(v) : v >= 1 ? v.toFixed(1) : v.toFixed(2)).toString().replace(/\.0+$/, '') + '%';
 const elemChip = e => `<span class="cx-el" style="--ec:${ELEMS[e].color}">${ELEMS[e].name}</span>`;
@@ -1542,6 +1595,23 @@ function codexRounds() {
     <div><h3>적</h3><table class="rank cx-foes"><thead><tr><th></th><th>이름</th><th>갑옷</th><th class="r">체력</th><th class="r">빠르기</th></tr></thead><tbody>${foes.map(k => `<tr><td><img class="px" alt="" src="${sprite(k)}"></td><td>${FOES[k].name}</td><td>${armorCell(FOES[k].armor)}</td><td class="r">${FOES[k].hp}</td><td class="r">${FOES[k].spd}</td></tr>${FOES[k].note ? `<tr class="cx-note"><td></td><td colspan="4" class="dim small">${FOES[k].note}</td></tr>` : ''}`).join('')}</tbody></table><p class="dim small">체력은 1라운드 보통 난이도 기준입니다.</p></div></div>
     <h3>특별한 라운드</h3><table class="rank"><tbody><tr><td>${TREASURE_ROUNDS.join(' · ')}</td><td><img class="px cx-mini" alt="" src="${sprite('treasure')}"> <b>보물 도깨비</b>: 잡으면 선물 셋 중 하나를 고릅니다. 24초 뒤 달아납니다.</td></tr>${bosses.map(([r, k, t]) => `<tr><td>${r > ROUNDS ? '40 뒤' : r}</td><td><img class="px cx-mini" alt="" src="${sprite(k)}"> <b>${FOES[k].name}</b>${FOES[k].armor === 'cycle' ? '' : ` ${armorCell(FOES[k].armor)}`}: ${t}</td></tr>`).join('')}</tbody></table><h3>보스 특성 (악몽부터)</h3><table class="rank"><tbody>${DIFFS.filter(d => d.trait).map(d => `<tr><td>${d.name}</td><td><b>${BOSS_TRAITS[d.trait].name}</b></td><td>${BOSS_TRAITS[d.trait].desc}</td></tr>`).join('')}</tbody></table>`;
 }
+// 조합 도감: found (switched on once) shows everything; part (a part has been held) shows the parts held;
+// lock shows silhouettes and the riddle.
+let cxCombo = null;
+const comboState = c => (P.combos[c.id] ? 'found' : c.items.some(id => P.had.includes(id)) ? 'part' : 'lock');
+function codexCombos() {
+  const n = Object.keys(P.combos).length, sel = COMBO[cxCombo] || COMBOS[0], ss = comboState(sel);
+  const grouped = items => { const m = new Map(); for (const id of items) m.set(id, (m.get(id) || 0) + 1); return [...m]; };
+  const ico = (id, st) => (st === 'found' || (st === 'part' && P.had.includes(id)) ? `<img class="px" alt="${ITEM[id].name}" src="${iconFor(ITEM[id])}">` : st === 'lock' ? `<img class="px sil" alt="" src="${iconFor(ITEM[id])}">` : '<span class="q">?</span>');
+  const card = c => { const st = comboState(c);
+    return `<button class="cb ${st}${c.id === sel.id ? ' sel' : ''}" style="--c:${cmbColor(c.type)}" data-act="cx-cmb" data-id="${c.id}"><span class="st">${st === 'found' ? '✓ 발견' : st === 'part' ? '단서' : '미발견'}</span><span class="ings">${grouped(c.items).map(([id, k], i) => `${i ? '<span class="x">+</span>' : ''}${ico(id, st)}${k > 1 ? `<span class="n">×${k}</span>` : ''}`).join('')}</span><span class="nm">${st === 'lock' ? '？？？' : c.name}</span><span class="ef">${st === 'found' ? c.eff : `“${c.hint}”`}</span></button>`; };
+  const need = grouped(sel.items).map(([id, k]) => { const show = ss === 'found' || P.had.includes(id); return `<div>${show ? `<img class="px" alt="" src="${iconFor(ITEM[id])}">${ITEM[id].name}${k > 1 ? ` ×${k}` : ''}` : `<img class="px sil" alt="" src="${iconFor(ITEM[id])}">？？？`}<span class="${show ? 'ok' : 'no'}">${show ? '가져 봄' : '아직'}</span></div>`; }).join('');
+  const detail = ss === 'lock' ? `<span class="kind">미발견</span><h3>？？？</h3><p class="hint">단서: “${sel.hint}”</p><p class="hint">재료를 모두 봇짐에 넣으면 발견됩니다. 재료를 하나라도 가져 보면 그 재료가 보입니다.</p>`
+    : `<span class="kind">${ss === 'found' ? `발견함 · ${new Date(P.combos[sel.id] + 9 * 3600e3).getUTCMonth() + 1}.${new Date(P.combos[sel.id] + 9 * 3600e3).getUTCDate()}` : '단서'}</span><h3>${sel.name}</h3><div class="need">${need}</div>${ss === 'found' ? `<div class="eff">${sel.eff}</div><p class="lore">${sel.lore}</p>` : `<p class="hint">단서: “${sel.hint}”</p><p class="hint">효과는 발견하면 공개됩니다.</p>`}`;
+  return `<p class="cx-lead">특정 물건을 <b>함께</b> 봇짐에 넣으면 숨은 <b>조합</b>이 켜집니다. 하나라도 팔면 꺼지고, 처음 켜면 도감에 남고 기억 조각 +3을 받습니다. 장터에서 <span class="knot-s"></span> 매듭 표시가 붙은 물건이 재료입니다.</p>
+    <div class="cb-prog"><span>찾은 조합 <b class="gold">${n} / ${COMBOS.length}</b></span><span class="bar"><i style="width:${(n / COMBOS.length * 100).toFixed(1)}%"></i></span></div>
+    <div class="cb-body"><div class="cb-grid">${COMBOS.map(card).join('')}</div><div class="cb-detail" style="--c:${cmbColor(sel.type)}">${detail}</div></div>`;
+}
 function codexSets() {
   const distinct = t => ITEMS.filter(d => d.cat === 'weapon' && d.type === t).length;
   const elemN = e => ITEMS.filter(d => d.elem === e || d.elem2 === e).length;
@@ -1554,7 +1624,7 @@ function codexSets() {
     <p class="dim small">속성 물건: ${ELEM_IDS.map(e => `${ELEMS[e].name} — ${ITEMS.filter(d => d.elem === e || d.elem2 === e).map(d => d.name).join(', ')}`).join(' / ')}</p>`;
 }
 function renderCodex() {
-  const body = codexTab === 'shop' ? codexShop() : codexTab === 'rounds' ? codexRounds() : codexTab === 'sets' ? codexSets() : codexItems();
+  const body = codexTab === 'shop' ? codexShop() : codexTab === 'rounds' ? codexRounds() : codexTab === 'sets' ? codexSets() : codexTab === 'combo' ? codexCombos() : codexItems();
   $('#menuBody').innerHTML = `${scrollOpen()}${panelHead('도감')}<div class="cx-tabs">${CODEX_TABS.map(([k, n]) => `<button class="${k === codexTab ? 'on' : ''}" data-act="cx-tab" data-id="${k}">${n}</button>`).join('')}</div><div class="cx-body-wrap">${body}</div></div>`;
 }
 
@@ -1857,6 +1927,7 @@ document.addEventListener('click', ev => {
     case 'donate': showDonate(); break;
     case 'firsts': showFirsts(); break;
     case 'cx-tab': codexTab = id; renderCodex(); break;
+    case 'cx-cmb': { const y = ($('#menuBody .panel') || {}).scrollTop || 0; cxCombo = id; renderCodex(); const pn = $('#menuBody .panel'); if (pn) pn.scrollTop = y; break; }
     case 'cx-filter': codexFilter = id; renderCodex(); break;
     case 'settings': showMenu('settings'); break;
     case 'diff': selDiff = id; renderSelect(); $(`[data-act="diff"][data-id="${id}"]`)?.focus(); break;
